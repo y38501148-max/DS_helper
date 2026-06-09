@@ -16,6 +16,10 @@ TOOL_VARIANTS = [
     ("sort_merge", ("SortToolC", "SORT_MODE", 4)),
     ("sort_binary_insert", ("SortToolC", "SORT_MODE", 5)),
     ("bst_insert", "BST_INSERT_TOOL_C"),
+    ("bst_pre_to_post", ("BstTraversalToolC", 0, 0)),
+    ("bst_pre_build", ("BstTraversalToolC", 0, 1)),
+    ("bst_post_to_pre", ("BstTraversalToolC", 1, 0)),
+    ("bst_post_build", ("BstTraversalToolC", 1, 1)),
     ("traversal_pre", ("TraversalToolC", "TRAVERSAL_MODE", 1)),
     ("traversal_in", ("TraversalToolC", "TRAVERSAL_MODE", 2)),
     ("traversal_post", ("TraversalToolC", "TRAVERSAL_MODE", 3)),
@@ -82,6 +86,18 @@ def generated_expression_body(source, from_mode, target_mode):
     return f"#define EXPR_FROM {from_mode}\n#define EXPR_TARGET {target_mode}" + match.group(1)
 
 
+def generated_bst_traversal_body(source, from_mode, target_mode):
+    match = re.search(
+        r'static std::string BstTraversalToolC\(int from, int target\) \{\n\s*return "#define BST_FROM " '
+        r'\+ std::to_string\(from\) \+ "\\n#define BST_TARGET " \+ std::to_string\(target\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise ValueError("missing generated tool body: BstTraversalToolC")
+    return f"#define BST_FROM {from_mode}\n#define BST_TARGET {target_mode}" + match.group(1)
+
+
 def collect_variants(source):
     constants = const_blocks(source)
     variants = []
@@ -90,6 +106,9 @@ def collect_variants(source):
             if spec[0] == "ExpressionToolC":
                 _, from_mode, target_mode = spec
                 variants.append((name, generated_expression_body(source, from_mode, target_mode)))
+            elif spec[0] == "BstTraversalToolC":
+                _, from_mode, target_mode = spec
+                variants.append((name, generated_bst_traversal_body(source, from_mode, target_mode)))
             else:
                 function_name, macro_name, mode = spec
                 variants.append((name, generated_body(source, function_name, macro_name, mode)))

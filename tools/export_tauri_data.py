@@ -48,6 +48,18 @@ def generated_expression_body(source, from_mode, target_mode):
     return f"#define EXPR_FROM {from_mode}\n#define EXPR_TARGET {target_mode}" + match.group(1)
 
 
+def generated_bst_traversal_body(source, from_mode, target_mode):
+    match = re.search(
+        r'static std::string BstTraversalToolC\(int from, int target\) \{\n\s*return "#define BST_FROM " '
+        r'\+ std::to_string\(from\) \+ "\\n#define BST_TARGET " \+ std::to_string\(target\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise ValueError("missing generated tool body: BstTraversalToolC")
+    return f"#define BST_FROM {from_mode}\n#define BST_TARGET {target_mode}" + match.group(1)
+
+
 def export_templates():
     source = read("src/source_templates.cpp")
     constants = const_blocks(source)
@@ -104,6 +116,15 @@ def export_tools():
             ],
         },
         {"name": "二叉排序树逐点插入", "variants": [variant("插入统计", constants["BST_INSERT_TOOL_C"], "输入格式：n，然后输入 n 个整数。\n输出：每插入一个点后的已插入数量、单次比较次数、累计比较次数。")]},
+        {
+            "name": "BST先后序转换与建树",
+            "variants": [
+                variant("先序->后序", generated_bst_traversal_body(source, 0, 0), "输入格式：n，然后输入二叉排序树先序序列。\n输出：对应后序遍历。重复值按放入右子树处理。"),
+                variant("先序->建树", generated_bst_traversal_body(source, 0, 1), "输入格式：n，然后输入二叉排序树先序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"),
+                variant("后序->先序", generated_bst_traversal_body(source, 1, 0), "输入格式：n，然后输入二叉排序树后序序列。\n输出：对应先序遍历。重复值按放入右子树处理。"),
+                variant("后序->建树", generated_bst_traversal_body(source, 1, 1), "输入格式：n，然后输入二叉排序树后序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"),
+            ],
+        },
         {
             "name": "二叉树三种遍历",
             "variants": [

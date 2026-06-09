@@ -262,11 +262,12 @@ struct WebViewHost::Impl {
         if (type != L"runTool") return;
 
         int toolIndex = -1, variantIndex = -1, requestId = requestSeed++;
-        std::wstring stdinWide;
+        std::wstring stdinWide, codeWide;
         ExtractJsonInt(json, L"toolIndex", &toolIndex);
         ExtractJsonInt(json, L"variantIndex", &variantIndex);
         ExtractJsonInt(json, L"requestId", &requestId);
         ExtractJsonString(json, L"stdin", &stdinWide);
+        bool hasEditedCode = ExtractJsonString(json, L"code", &codeWide);
 
         if (toolIndex < 0 || toolIndex >= (int)tools.size() ||
             variantIndex < 0 || variantIndex >= (int)tools[toolIndex].variants.size()) {
@@ -274,7 +275,7 @@ struct WebViewHost::Impl {
             return;
         }
 
-        std::string code = tools[toolIndex].variants[variantIndex].code;
+        std::string code = hasEditedCode ? WideToUtf8Local(codeWide) : tools[toolIndex].variants[variantIndex].code;
         std::string input = WideToUtf8Local(stdinWide);
         auto callback = runCallback;
         HWND target = hwnd;

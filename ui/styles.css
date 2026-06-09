@@ -10,13 +10,6 @@
   --code-line: #3c3c3c;
   --code-text: #d4d4d4;
   --code-muted: #9cdcfe;
-  --code-comment: #6a9955;
-  --code-keyword: #569cd6;
-  --code-string: #ce9178;
-  --code-number: #b5cea8;
-  --code-function: #dcdcaa;
-  --code-preprocessor: #c586c0;
-  --code-operator: #d4d4d4;
   --accent: #0f8b8d;
   --accent-strong: #0a6f71;
   --warm: #f25f5c;
@@ -283,6 +276,39 @@ button {
   font-weight: 760;
 }
 
+.modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 20, 0.42);
+  backdrop-filter: blur(6px);
+}
+
+.warning-modal {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(216, 163, 26, 0.42);
+  background: #fffaf0;
+  box-shadow: var(--shadow);
+}
+
+.warning-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.warning-body {
+  color: #5f4610;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
 .code-view,
 .stdout {
   margin: 0;
@@ -301,32 +327,11 @@ button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.tok-comment {
-  color: var(--code-comment);
-}
-
-.tok-keyword {
-  color: var(--code-keyword);
-}
-
-.tok-string {
-  color: var(--code-string);
-}
-
-.tok-number {
-  color: var(--code-number);
-}
-
-.tok-function {
-  color: var(--code-function);
-}
-
-.tok-preprocessor {
-  color: var(--code-preprocessor);
-}
-
-.tok-operator {
-  color: var(--code-operator);
+.monaco-code {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .tool-detail {

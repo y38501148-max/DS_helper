@@ -303,6 +303,123 @@ int main(void) {
 }
 )DSH";
 
+static std::string BstTraversalToolC(int from, int target) {
+    return "#define BST_FROM " + std::to_string(from) + "\n#define BST_TARGET " + std::to_string(target) + R"DSH(
+#include <stdio.h>
+
+#define MAXN 1005
+#define NEG_INF (-4000000000000000000LL)
+#define POS_INF (4000000000000000000LL)
+
+int n, seq[MAXN], value[MAXN], leftChild[MAXN], rightChild[MAXN], nodeCount, invalid;
+
+int in_range(int x, long long low, long long high) {
+    long long v = x;
+    return low <= v && v < high;
+}
+
+int new_node(int x) {
+    ++nodeCount;
+    value[nodeCount] = x;
+    leftChild[nodeCount] = 0;
+    rightChild[nodeCount] = 0;
+    return nodeCount;
+}
+
+int build_from_preorder(int left, int right, long long low, long long high) {
+    if (left > right || invalid) return 0;
+    int rootValue = seq[left];
+    if (!in_range(rootValue, low, high)) {
+        invalid = 1;
+        return 0;
+    }
+    int root = new_node(rootValue);
+    int split = left + 1;
+    while (split <= right && seq[split] < rootValue) ++split;
+    leftChild[root] = build_from_preorder(left + 1, split - 1, low, rootValue);
+    rightChild[root] = build_from_preorder(split, right, rootValue, high);
+    return root;
+}
+
+int build_from_postorder(int left, int right, long long low, long long high) {
+    if (left > right || invalid) return 0;
+    int rootValue = seq[right];
+    if (!in_range(rootValue, low, high)) {
+        invalid = 1;
+        return 0;
+    }
+    int root = new_node(rootValue);
+    int split = left;
+    while (split < right && seq[split] < rootValue) ++split;
+    leftChild[root] = build_from_postorder(left, split - 1, low, rootValue);
+    rightChild[root] = build_from_postorder(split, right - 1, rootValue, high);
+    return root;
+}
+
+void print_preorder(int root) {
+    if (!root) return;
+    printf("%d ", value[root]);
+    print_preorder(leftChild[root]);
+    print_preorder(rightChild[root]);
+}
+
+void print_postorder(int root) {
+    if (!root) return;
+    print_postorder(leftChild[root]);
+    print_postorder(rightChild[root]);
+    printf("%d ", value[root]);
+}
+
+void print_tree(int root) {
+    printf("建树结果（数组模拟，空孩子为0）:\n");
+    printf("根节点编号: %d\n", root);
+    printf("编号 值 左孩子 右孩子\n");
+    for (int i = 1; i <= nodeCount; ++i) {
+        printf("%d %d %d %d\n", i, value[i], leftChild[i], rightChild[i]);
+    }
+}
+
+int main(void) {
+    if (scanf("%d", &n) != 1) return 0;
+    if (n <= 0 || n >= MAXN) {
+        printf("输入规模不合法\n");
+        return 0;
+    }
+    for (int i = 1; i <= n; ++i) scanf("%d", &seq[i]);
+
+    int root = 0;
+#if BST_FROM == 0
+    root = build_from_preorder(1, n, NEG_INF, POS_INF);
+#else
+    root = build_from_postorder(1, n, NEG_INF, POS_INF);
+#endif
+
+    if (invalid) {
+#if BST_FROM == 0
+        printf("输入序列不是合法的二叉排序树先序遍历\n");
+#else
+        printf("输入序列不是合法的二叉排序树后序遍历\n");
+#endif
+        return 0;
+    }
+
+#if BST_TARGET == 0
+#if BST_FROM == 0
+    printf("后序遍历: ");
+    print_postorder(root);
+#else
+    printf("先序遍历: ");
+    print_preorder(root);
+#endif
+    printf("\n");
+#else
+    print_tree(root);
+#endif
+    return 0;
+}
+)DSH";
+}
+
 static std::string TraversalToolC(int mode) {
     return "#define TRAVERSAL_MODE " + std::to_string(mode) + R"DSH(
 #include <stdio.h>
@@ -1019,6 +1136,12 @@ std::vector<FillTool> BuildTools() {
         }},
         {L"二叉排序树逐点插入", {
             {L"插入统计", BST_INSERT_TOOL_C, L"输入格式：n，然后输入 n 个整数。\n输出：每插入一个点后的已插入数量、单次比较次数、累计比较次数。"}
+        }},
+        {L"BST先后序转换与建树", {
+            {L"先序->后序", BstTraversalToolC(0, 0), L"输入格式：n，然后输入二叉排序树先序序列。\n输出：对应后序遍历。重复值按放入右子树处理。"},
+            {L"先序->建树", BstTraversalToolC(0, 1), L"输入格式：n，然后输入二叉排序树先序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"},
+            {L"后序->先序", BstTraversalToolC(1, 0), L"输入格式：n，然后输入二叉排序树后序序列。\n输出：对应先序遍历。重复值按放入右子树处理。"},
+            {L"后序->建树", BstTraversalToolC(1, 1), L"输入格式：n，然后输入二叉排序树后序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"},
         }},
         {L"二叉树三种遍历", {
             {L"先序遍历", TraversalToolC(1), L"输入格式：n root，然后对 1..n 输入 left right；空孩子用 -1。\n输出：所选遍历序列。"},

@@ -1,3 +1,83 @@
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import "monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution";
+
+self.MonacoEnvironment = {
+  getWorker() {
+    return new editorWorker();
+  },
+};
+
+const completionInsertTextRule = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+
+function registerCppCompletions() {
+  const keywords = [
+    "auto", "break", "case", "char", "const", "continue", "default", "double", "else", "enum",
+    "extern", "float", "for", "if", "inline", "int", "long", "return", "short", "signed",
+    "sizeof", "static", "struct", "switch", "typedef", "unsigned", "void", "while",
+  ].map((keyword) => ({
+    label: keyword,
+    kind: monaco.languages.CompletionItemKind.Keyword,
+    insertText: keyword,
+    detail: "C keyword",
+  }));
+
+  const snippets = [
+    ["main", `int main(void) {
+	$0
+}
+`, "main function"],
+    ["for", `for (int \${1:i} = 0; \${1:i} < \${2:n}; ++\${1:i}) {
+	$0
+}`, "for loop"],
+    ["while", `while (\${1:condition}) {
+	$0
+}`, "while loop"],
+    ["if", `if (\${1:condition}) {
+	$0
+}`, "if block"],
+    ["ifelse", `if (\${1:condition}) {
+	$2
+} else {
+	$0
+}`, "if else block"],
+    ["struct", `typedef struct {
+	$0
+} \${1:Node};`, "typedef struct"],
+    ["include_stdio", "#include <stdio.h>", "stdio include"],
+    ["include_string", "#include <string.h>", "string include"],
+    ["include_stdlib", "#include <stdlib.h>", "stdlib include"],
+    ["printf", "printf(\"${1:%d\\\\n}\", ${2:value});", "printf"],
+    ["scanf", "scanf(\"${1:%d}\", &${2:value});", "scanf"],
+    ["memset", "memset(${1:array}, ${2:0}, sizeof(${1:array}));", "memset"],
+    ["qsort", "qsort(${1:a}, ${2:n}, sizeof(${1:a[0]}), ${3:cmp});", "qsort"],
+  ].map(([label, insertText, detail]) => ({
+    label,
+    kind: monaco.languages.CompletionItemKind.Snippet,
+    insertText,
+    insertTextRules: completionInsertTextRule,
+    detail,
+  }));
+
+  monaco.languages.registerCompletionItemProvider("cpp", {
+    triggerCharacters: ["#", ".", ">"],
+    provideCompletionItems(model, position) {
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+      return {
+        suggestions: [...keywords, ...snippets].map((item) => ({ ...item, range })),
+      };
+    },
+  });
+}
+
+registerCppCompletions();
+
 let sourceTemplates = [
   "[02] 字符串基础 reverse/atoi/itoa",
   "[03] 朴素字符串查找 index",
@@ -58,6 +138,15 @@ let tools = [
     variants: [{ name: "插入统计", usage: "输入格式：n，然后输入 n 个整数。\n输出：每插入一个点后的比较统计。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" }],
   },
   {
+    name: "BST先后序转换与建树",
+    variants: [
+      { name: "先序->后序", usage: "输入格式：n，然后输入二叉排序树先序序列。\n输出：对应后序遍历。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" },
+      { name: "先序->建树", usage: "输入格式：n，然后输入二叉排序树先序序列。\n输出：数组模拟建树表。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" },
+      { name: "后序->先序", usage: "输入格式：n，然后输入二叉排序树后序序列。\n输出：对应先序遍历。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" },
+      { name: "后序->建树", usage: "输入格式：n，然后输入二叉排序树后序序列。\n输出：数组模拟建树表。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" },
+    ],
+  },
+  {
     name: "二叉树三种遍历",
     variants: ["先序遍历", "中序遍历", "后序遍历"].map((name) => ({
       name,
@@ -107,12 +196,19 @@ const state = {
   variantIndex: 0,
   exprFrom: 0,
   exprTarget: 0,
+  bstFrom: 0,
+  bstTarget: 0,
   stdin: "",
   stdout: "",
+  templateWarningVisible: false,
 };
 
 const app = document.querySelector("#app");
 let runRequestId = 1;
+let activeCodeEditor = null;
+let activeCodeEditorKind = "";
+let activeCodeEditorKey = "";
+const toolCodeDrafts = new Map();
 
 function hasNativeBridge() {
   return Boolean(window.chrome && window.chrome.webview);
@@ -134,119 +230,6 @@ function escapeHtml(text) {
     .replaceAll('"', "&quot;");
 }
 
-const codeKeywords = new Set([
-  "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum",
-  "extern", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return",
-  "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void",
-  "volatile", "while", "bool", "class", "constexpr", "namespace", "new", "operator", "private",
-  "protected", "public", "template", "typename", "using",
-]);
-
-function spanCode(className, text) {
-  return `<span class="${className}">${escapeHtml(text)}</span>`;
-}
-
-function isIdentStart(ch) {
-  return /[A-Za-z_]/.test(ch);
-}
-
-function isIdentPart(ch) {
-  return /[A-Za-z0-9_]/.test(ch);
-}
-
-function isPreprocessorStart(code, index) {
-  for (let i = index - 1; i >= 0 && code[i] !== "\n"; --i) {
-    if (code[i] !== " " && code[i] !== "\t") return false;
-  }
-  return true;
-}
-
-function highlightCode(code) {
-  let html = "";
-  let i = 0;
-  while (i < code.length) {
-    const ch = code[i];
-    const next = code[i + 1] || "";
-
-    if (ch === "#" && isPreprocessorStart(code, i)) {
-      let j = i;
-      while (j < code.length && code[j] !== "\n") ++j;
-      html += spanCode("tok-preprocessor", code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (ch === "/" && next === "/") {
-      let j = i + 2;
-      while (j < code.length && code[j] !== "\n") ++j;
-      html += spanCode("tok-comment", code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (ch === "/" && next === "*") {
-      let j = i + 2;
-      while (j < code.length && !(code[j] === "*" && code[j + 1] === "/")) ++j;
-      j = Math.min(j + 2, code.length);
-      html += spanCode("tok-comment", code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      const quote = ch;
-      let j = i + 1;
-      while (j < code.length) {
-        if (code[j] === "\\") {
-          j += 2;
-          continue;
-        }
-        if (code[j] === quote) {
-          ++j;
-          break;
-        }
-        ++j;
-      }
-      html += spanCode("tok-string", code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (/[0-9]/.test(ch)) {
-      let j = i + 1;
-      while (j < code.length && /[A-Za-z0-9_.]/.test(code[j])) ++j;
-      html += spanCode("tok-number", code.slice(i, j));
-      i = j;
-      continue;
-    }
-
-    if (isIdentStart(ch)) {
-      let j = i + 1;
-      while (j < code.length && isIdentPart(code[j])) ++j;
-      const word = code.slice(i, j);
-      let k = j;
-      while (k < code.length && /\s/.test(code[k])) ++k;
-      if (codeKeywords.has(word)) {
-        html += spanCode("tok-keyword", word);
-      } else if (code[k] === "(") {
-        html += spanCode("tok-function", word);
-      } else {
-        html += escapeHtml(word);
-      }
-      i = j;
-      continue;
-    }
-
-    if ("+-*/%=!<>&|^~?:.".includes(ch)) {
-      html += spanCode("tok-operator", ch);
-    } else {
-      html += escapeHtml(ch);
-    }
-    ++i;
-  }
-  return html;
-}
-
 function currentTool() {
   return tools[state.toolIndex] || tools[0];
 }
@@ -255,8 +238,78 @@ function currentVariant() {
   const tool = currentTool();
   if (tool.name === "三缀表达式转换与计算") {
     state.variantIndex = state.exprFrom * 4 + state.exprTarget;
+  } else if (tool.name === "BST先后序转换与建树") {
+    state.variantIndex = state.bstFrom * 2 + state.bstTarget;
   }
   return tool.variants[state.variantIndex] || tool.variants[0];
+}
+
+function toolDraftKey(toolIndex = state.toolIndex, variantIndex = state.variantIndex) {
+  return `${toolIndex}:${variantIndex}`;
+}
+
+function clearCurrentToolDrafts() {
+  const prefix = `${state.toolIndex}:`;
+  for (const key of [...toolCodeDrafts.keys()]) {
+    if (key.startsWith(prefix)) toolCodeDrafts.delete(key);
+  }
+}
+
+function saveActiveCodeEditor() {
+  if (activeCodeEditor && activeCodeEditorKind === "toolDetail" && activeCodeEditorKey) {
+    toolCodeDrafts.set(activeCodeEditorKey, activeCodeEditor.getValue());
+  }
+}
+
+function disposeActiveCodeEditor() {
+  if (activeCodeEditor) {
+    activeCodeEditor.dispose();
+    activeCodeEditor = null;
+    activeCodeEditorKind = "";
+    activeCodeEditorKey = "";
+  }
+}
+
+function currentToolEditorCode() {
+  if (activeCodeEditor && activeCodeEditorKind === "toolDetail") return activeCodeEditor.getValue();
+  return toolCodeDrafts.get(toolDraftKey()) ?? currentVariant().code;
+}
+
+function mountCodeEditor() {
+  const node = document.querySelector("[data-code-editor]");
+  if (!node) return;
+  const kind = node.dataset.codeEditor;
+  const readOnly = node.dataset.readonly === "true";
+  const editorKey = node.dataset.editorKey || "";
+  let value = "";
+  if (kind === "template") {
+    value = (sourceTemplates[state.templateIndex] || sourceTemplates[0]).code;
+  } else if (kind === "toolPreview") {
+    value = currentTool().variants[0].code;
+  } else {
+    value = toolCodeDrafts.get(editorKey) ?? currentVariant().code;
+  }
+
+  activeCodeEditor = monaco.editor.create(node, {
+    value,
+    language: "cpp",
+    theme: "vs-dark",
+    readOnly,
+    domReadOnly: readOnly,
+    automaticLayout: true,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    fontFamily: 'Consolas, "Cascadia Mono", monospace',
+    fontSize: 14,
+    lineHeight: 22,
+    tabSize: 4,
+    insertSpaces: true,
+    padding: { top: 14, bottom: 14 },
+    quickSuggestions: true,
+    suggestOnTriggerCharacters: true,
+  });
+  activeCodeEditorKind = kind;
+  activeCodeEditorKey = editorKey;
 }
 
 function filteredTemplates() {
@@ -278,6 +331,19 @@ function topbar(title = "完全离线的数据结构辅助工具", showBack = fa
       </div>
       ${showBack ? `<button class="back-button" data-action="back">← 返回上一级页面</button>` : ""}
     </header>
+  `;
+}
+
+function renderTemplateWarning() {
+  if (!state.templateWarningVisible) return "";
+  return `
+    <div class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="template-warning-title">
+      <div class="warning-modal">
+        <div class="warning-title" id="template-warning-title">使用提醒</div>
+        <div class="warning-body">代码模板切勿直接复制！如果被查重发现后果自负</div>
+        <button class="primary-button" data-action="dismissTemplateWarning">我知道了</button>
+      </div>
+    </div>
   `;
 }
 
@@ -323,9 +389,10 @@ function renderTemplates() {
           <div class="pane-title">${escapeHtml(selected.name)}</div>
           <button class="ghost-button" data-copy="template">复制代码</button>
         </div>
-        <pre class="code-view">${highlightCode(selected.code)}</pre>
+        <div class="code-view monaco-code" data-code-editor="template" data-readonly="true"></div>
       </section>
     </main>
+    ${renderTemplateWarning()}
   `;
 }
 
@@ -348,7 +415,7 @@ function renderToolList() {
           <div class="pane-title">${escapeHtml(currentTool().name)}</div>
           <button class="primary-button" data-action="openTool">进入</button>
         </div>
-        <pre class="code-view">${highlightCode(currentTool().variants[0].code)}</pre>
+        <div class="code-view monaco-code" data-code-editor="toolPreview" data-readonly="true"></div>
       </section>
     </main>
   `;
@@ -363,6 +430,19 @@ function renderVariantControls(tool) {
         </select>
         <select class="select" data-select="exprTarget">
           ${["转前缀", "转中缀", "转后缀", "求值"].map((name, index) => `<option value="${index}" ${index === state.exprTarget ? "selected" : ""}>${name}</option>`).join("")}
+        </select>
+      </div>
+    `;
+  }
+  if (tool.name === "BST先后序转换与建树") {
+    const convertTarget = state.bstFrom === 0 ? "转后序" : "转先序";
+    return `
+      <div class="control-grid">
+        <select class="select" data-select="bstFrom">
+          ${["先序", "后序"].map((name, index) => `<option value="${index}" ${index === state.bstFrom ? "selected" : ""}>${name}</option>`).join("")}
+        </select>
+        <select class="select" data-select="bstTarget">
+          ${[convertTarget, "建树"].map((name, index) => `<option value="${index}" ${index === state.bstTarget ? "selected" : ""}>${name}</option>`).join("")}
         </select>
       </div>
     `;
@@ -386,7 +466,7 @@ function renderToolDetail() {
           <div class="pane-title">${escapeHtml(variant.name)}</div>
           <button class="ghost-button" data-copy="tool">复制代码</button>
         </div>
-        <pre class="code-view">${highlightCode(variant.code)}</pre>
+        <div class="code-view monaco-code" data-code-editor="toolDetail" data-editor-key="${toolDraftKey()}" data-readonly="false"></div>
       </section>
       <section class="tool-runner">
         ${renderVariantControls(tool)}
@@ -403,10 +483,13 @@ function renderToolDetail() {
 }
 
 function render() {
+  saveActiveCodeEditor();
+  disposeActiveCodeEditor();
   if (state.page === "templates") renderTemplates();
   else if (state.page === "tools") renderToolList();
   else if (state.page === "toolDetail") renderToolDetail();
   else renderHome();
+  mountCodeEditor();
 }
 
 async function copyText(text) {
@@ -426,10 +509,16 @@ app.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
   if (button.dataset.page) {
+    if (button.dataset.page === "templates") {
+      state.templateWarningVisible = true;
+    }
     state.page = button.dataset.page;
     render();
   } else if (button.dataset.action === "back") {
     state.page = state.page === "toolDetail" ? "tools" : "home";
+    render();
+  } else if (button.dataset.action === "dismissTemplateWarning") {
+    state.templateWarningVisible = false;
     render();
   } else if (button.dataset.template) {
     state.templateIndex = Number(button.dataset.template);
@@ -442,20 +531,27 @@ app.addEventListener("click", (event) => {
   } else if (button.dataset.action === "openTool") {
     state.page = "toolDetail";
     state.variantIndex = 0;
+    if (currentTool().name === "BST先后序转换与建树") {
+      state.bstFrom = 0;
+      state.bstTarget = 0;
+    }
+    clearCurrentToolDrafts();
     state.stdout = "";
     render();
   } else if (button.dataset.copy === "template") {
     copyText(sourceTemplates[state.templateIndex].code);
   } else if (button.dataset.copy === "tool") {
-    copyText(currentVariant().code);
+    copyText(currentToolEditorCode());
   } else if (button.dataset.action === "run") {
     const variant = currentVariant();
+    const code = currentToolEditorCode();
     if (hasTauriBridge()) {
       state.stdout = "运行中...";
       tauriInvoke("run_tool", {
         toolIndex: state.toolIndex,
         variantIndex: state.variantIndex,
         stdinText: state.stdin,
+        code,
       })
         .then((stdout) => {
           state.stdout = stdout;
@@ -473,10 +569,11 @@ app.addEventListener("click", (event) => {
         toolIndex: state.toolIndex,
         variantIndex: state.variantIndex,
         stdin: state.stdin,
+        code,
         requestId,
       });
     } else {
-      state.stdout = `selected: ${currentTool().name} / ${variant.name}\nstdin bytes: ${new Blob([state.stdin]).size}\n\n${state.stdin}`;
+      state.stdout = `selected: ${currentTool().name} / ${variant.name}\ncode bytes: ${new Blob([code]).size}\nstdin bytes: ${new Blob([state.stdin]).size}\n\n${state.stdin}`;
     }
     render();
   } else if (button.dataset.action === "clear") {
@@ -506,6 +603,14 @@ app.addEventListener("change", (event) => {
     render();
   } else if (event.target.dataset.select === "exprTarget") {
     state.exprTarget = Number(event.target.value);
+    state.stdout = "";
+    render();
+  } else if (event.target.dataset.select === "bstFrom") {
+    state.bstFrom = Number(event.target.value);
+    state.stdout = "";
+    render();
+  } else if (event.target.dataset.select === "bstTarget") {
+    state.bstTarget = Number(event.target.value);
     state.stdout = "";
     render();
   }

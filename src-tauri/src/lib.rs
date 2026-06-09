@@ -200,7 +200,11 @@ fn run_c_program(code: &str, stdin_text: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn run_tool(tool_index: usize, variant_index: usize, stdin_text: String) -> Result<String, String> {
+fn run_tool(tool_index: usize, variant_index: usize, stdin_text: String, code: Option<String>) -> Result<String, String> {
+    if let Some(edited_code) = code {
+        return run_c_program(&edited_code, &stdin_text);
+    }
+
     let data = app_data()?;
     let tool = data
         .tools

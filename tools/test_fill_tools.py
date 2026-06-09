@@ -62,6 +62,18 @@ def generated_expression(source, from_mode, target_mode):
     return f"#define EXPR_FROM {from_mode}\n#define EXPR_TARGET {target_mode}" + match.group(1)
 
 
+def generated_bst_traversal(source, from_mode, target_mode):
+    match = re.search(
+        r'static std::string BstTraversalToolC\(int from, int target\) \{\n\s*return "#define BST_FROM " '
+        r'\+ std::to_string\(from\) \+ "\\n#define BST_TARGET " \+ std::to_string\(target\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise RuntimeError("missing BstTraversalToolC body")
+    return f"#define BST_FROM {from_mode}\n#define BST_TARGET {target_mode}" + match.group(1)
+
+
 def compile_tool(compiler, workdir, name, code):
     source_path = workdir / f"{name}.c"
     exe_path = workdir / name
@@ -191,6 +203,97 @@ def test_stack(input_to_output_exe, output_to_input_exe):
                 got = run_tool(output_to_input_exe, stdin_text).strip()
                 expected = "可能" if tuple(output_seq) in possible else "不可能"
                 assert got == expected, (stdin_text, got, expected)
+
+
+def insert_bst(root, value):
+    if root is None:
+        return [value, None, None]
+    if value < root[0]:
+        root[1] = insert_bst(root[1], value)
+    else:
+        root[2] = insert_bst(root[2], value)
+    return root
+
+
+def preorder_tree(root):
+    if root is None:
+        return []
+    return [root[0]] + preorder_tree(root[1]) + preorder_tree(root[2])
+
+
+def postorder_tree(root):
+    if root is None:
+        return []
+    return postorder_tree(root[1]) + postorder_tree(root[2]) + [root[0]]
+
+
+def indexed_tree_rows(root):
+    rows = []
+
+    def rec(node):
+        if node is None:
+            return 0
+        node_id = len(rows) + 1
+        rows.append([node_id, node[0], 0, 0])
+        left = rec(node[1])
+        right = rec(node[2])
+        rows[node_id - 1][2] = left
+        rows[node_id - 1][3] = right
+        return node_id
+
+    rec(root)
+    return rows
+
+
+def parse_ints_after_colon(output):
+    line = output.strip().splitlines()[-1]
+    return list(map(int, line.split(":", 1)[1].split()))
+
+
+def parse_bst_rows(output):
+    rows = []
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) == 4 and all(part.lstrip("-").isdigit() for part in parts):
+            rows.append(list(map(int, parts)))
+    return rows
+
+
+def test_bst_traversal(exes):
+    cases = [
+        [5],
+        [5, 3, 7, 2, 4, 6, 8],
+        [8, 4, 10, 4, 9, 12, 11],
+    ]
+    rng = random.Random(20260612)
+    for _ in range(40):
+        n = rng.randint(1, 9)
+        cases.append([rng.randint(-5, 9) for _ in range(n)])
+
+    for values in cases:
+        root = None
+        for value in values:
+            root = insert_bst(root, value)
+        pre = preorder_tree(root)
+        post = postorder_tree(root)
+        rows = indexed_tree_rows(root)
+        pre_input = f"{len(pre)}\n{' '.join(map(str, pre))}\n"
+        post_input = f"{len(post)}\n{' '.join(map(str, post))}\n"
+
+        got_post = parse_ints_after_colon(run_tool(exes[(0, 0)], pre_input))
+        assert got_post == post, (values, got_post, post)
+
+        got_pre = parse_ints_after_colon(run_tool(exes[(1, 0)], post_input))
+        assert got_pre == pre, (values, got_pre, pre)
+
+        got_pre_rows = parse_bst_rows(run_tool(exes[(0, 1)], pre_input))
+        assert got_pre_rows == rows, (values, got_pre_rows, rows)
+
+        got_post_rows = parse_bst_rows(run_tool(exes[(1, 1)], post_input))
+        assert got_post_rows == rows, (values, got_post_rows, rows)
+
+    assert "不是合法" in run_tool(exes[(0, 0)], "3\n5 7 4\n")
+    assert "不是合法" in run_tool(exes[(1, 0)], "3\n7 4 5\n")
 
 
 def lds_length(seq):
@@ -412,6 +515,16 @@ def main():
         dijkstra_exe = compile_tool(args.compiler, root, "dijkstra_tool", constants["DIJKSTRA_TOOL_C"])
         kruskal_exe = compile_tool(args.compiler, root, "kruskal_tool", constants["KRUSKAL_TOOL_C"])
         sort_exes = {mode: compile_tool(args.compiler, root, f"sort_{mode}", generated_sort(source, mode)) for mode in range(1, 6)}
+        bst_exes = {
+            (from_mode, target_mode): compile_tool(
+                args.compiler,
+                root,
+                f"bst_{from_mode}_{target_mode}",
+                generated_bst_traversal(source, from_mode, target_mode),
+            )
+            for from_mode in range(2)
+            for target_mode in range(2)
+        }
         expr_exes = {
             (from_mode, target_mode): compile_tool(
                 args.compiler,
@@ -425,6 +538,7 @@ def main():
 
         test_dfs(dfs_exe)
         test_stack(stack_input_to_output_exe, stack_output_to_input_exe)
+        test_bst_traversal(bst_exes)
         test_queue(queue_exe)
         test_dijkstra(dijkstra_exe)
         test_kruskal(kruskal_exe)

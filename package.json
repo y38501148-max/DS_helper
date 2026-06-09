@@ -15,7 +15,8 @@
     "pack:mac": "tauri build --bundles dmg"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.0.0",
+    "monaco-editor": "^0.53.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
