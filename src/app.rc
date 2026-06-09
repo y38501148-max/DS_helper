@@ -1,0 +1,4 @@
+#include "resource.h"
+
+IDI_APP_ICON ICON "../assets/ds_helper.ico"
+IDB_APP_BACKGROUND BITMAP "../assets/ui_background.bmp"

@@ -1,0 +1,40 @@
+# Dependencies
+/node_modules/
+
+# Build outputs
+/build/
+/dist/
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/icons/icon.iconset/
+
+# Release artifacts are built locally and not published to GitHub.
+/release/
+*.dmg
+*.exe
+*.msi
+*.app
+
+# Generated app data. Regenerate with `python3 tools/export_tauri_data.py`
+# or through `npm run build:web` / Tauri build commands.
+/src-tauri/resources/ds_helper_data.json
+
+# Local course/reference materials used to derive templates.
+/resources/
+*.ppt
+*.pptx
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
