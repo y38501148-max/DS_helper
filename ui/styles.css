@@ -122,9 +122,9 @@ button {
 }
 
 .home-grid {
-  width: min(920px, 100%);
+  width: min(1120px, 100%);
   display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
   gap: 18px;
 }
 
@@ -179,6 +179,7 @@ button {
 
 .sidebar,
 .main-pane,
+.doc-pane,
 .tool-runner {
   min-width: 0;
   background: rgba(255, 255, 255, 0.92);
@@ -256,6 +257,12 @@ button {
 }
 
 .main-pane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.doc-pane {
   min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr;
@@ -390,6 +397,17 @@ button {
   padding: 12px;
   border-radius: 6px;
   border: 1px solid var(--code-line);
+}
+
+.doc-view {
+  margin: 0;
+  overflow: auto;
+  padding: 18px 22px;
+  border-radius: 0 0 8px 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink);
+  font: 14px/1.72 "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 860px) {

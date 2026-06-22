@@ -30,9 +30,16 @@ struct FillTool {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+struct DocPage {
+    name: String,
+    content: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 struct AppData {
     templates: Vec<CodeTemplate>,
     tools: Vec<FillTool>,
+    docs: Vec<DocPage>,
 }
 
 struct ProcessOutput {

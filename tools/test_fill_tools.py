@@ -38,6 +38,18 @@ def generated_sort(source, mode):
     return f"#define SORT_MODE {mode}" + match.group(1)
 
 
+def generated_heap(source, mode):
+    match = re.search(
+        r'static std::string HeapBuildToolC\(int mode\) \{\n\s*return "#define HEAP_MODE " '
+        r'\+ std::to_string\(mode\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise RuntimeError("missing HeapBuildToolC body")
+    return f"#define HEAP_MODE {mode}" + match.group(1)
+
+
 def generated_stack(source, mode):
     match = re.search(
         r"static std::string StackSequenceCheckToolC\(int mode\) \{\n\s*return \"#define STACK_CHECK_MODE \" "
@@ -478,8 +490,11 @@ def test_expression(exes):
         inputs = [prefix_input + "\n", infix_input + "\n", postfix_input + "\n"]
         expected = [prefix_out, infix_input, postfix_input, str(value)]
         for from_mode in range(3):
-            for target_mode in range(4):
+            for target_mode in range(5):
                 got = run_tool(exes[(from_mode, target_mode)], inputs[from_mode]).strip()
+                if target_mode == 4:
+                    assert "表达式树" in got and "编号 值 左孩子 右孩子" in got, ((from_mode, target_mode), got)
+                    continue
                 if target_mode in (0, 2):
                     got = " ".join(got.split())
                 assert got == expected[target_mode], ((from_mode, target_mode), inputs[from_mode], got, expected[target_mode])
@@ -493,10 +508,46 @@ def test_sort(exes):
             out = run_tool(exe, stdin_text)
             assert "总比较次数:" in out, (mode, out)
             if len(arr) > 1:
-                last_step = [line for line in out.splitlines() if line.startswith("第")][-1]
+                step_lines = [
+                    line
+                    for line in out.splitlines()
+                    if (line.startswith("第") or line.startswith("建堆") or line.startswith("弹出")) and ": " in line
+                ]
+                last_step = step_lines[-1]
                 got = list(map(int, last_step.split(": ", 1)[1].split()))
                 assert got == sorted(arr), (mode, arr, out)
-                assert "比较次数=" in last_step, (mode, out)
+
+
+def reference_heap(values, is_min_heap):
+    heap = []
+
+    def before(left, right):
+        return left < right if is_min_heap else left > right
+
+    for value in values:
+        heap.append(value)
+        index = len(heap) - 1
+        while index > 0:
+            parent = (index - 1) // 2
+            if not before(heap[index], heap[parent]):
+                break
+            heap[index], heap[parent] = heap[parent], heap[index]
+            index = parent
+    return heap
+
+
+def test_heap_build(exes):
+    arrays = [[3, 1, 4, 1, 5, 9], [5, 4, 3, 2, 1], [2, 2, 1, 3], [1]]
+    for mode, exe in exes.items():
+        is_min_heap = mode == 1
+        for arr in arrays:
+            stdin_text = f"{len(arr)}\n{' '.join(map(str, arr))}\n"
+            out = run_tool(exe, stdin_text)
+            expected = reference_heap(arr, is_min_heap)
+            last_insert = [line for line in out.splitlines() if line.startswith("插入")][-1]
+            got = list(map(int, last_insert.split(": ", 1)[1].split()))
+            assert got == expected, (mode, arr, got, expected, out)
+            assert "数组模拟堆树" in out, (mode, out)
 
 
 def main():
@@ -514,7 +565,8 @@ def main():
         queue_exe = compile_tool(args.compiler, root, "queue_tool", constants["QUEUE_COUNT_TOOL_C"])
         dijkstra_exe = compile_tool(args.compiler, root, "dijkstra_tool", constants["DIJKSTRA_TOOL_C"])
         kruskal_exe = compile_tool(args.compiler, root, "kruskal_tool", constants["KRUSKAL_TOOL_C"])
-        sort_exes = {mode: compile_tool(args.compiler, root, f"sort_{mode}", generated_sort(source, mode)) for mode in range(1, 6)}
+        sort_exes = {mode: compile_tool(args.compiler, root, f"sort_{mode}", generated_sort(source, mode)) for mode in range(1, 9)}
+        heap_exes = {mode: compile_tool(args.compiler, root, f"heap_{mode}", generated_heap(source, mode)) for mode in range(2)}
         bst_exes = {
             (from_mode, target_mode): compile_tool(
                 args.compiler,
@@ -533,7 +585,7 @@ def main():
                 generated_expression(source, from_mode, target_mode),
             )
             for from_mode in range(3)
-            for target_mode in range(4)
+            for target_mode in range(5)
         }
 
         test_dfs(dfs_exe)
@@ -544,6 +596,7 @@ def main():
         test_kruskal(kruskal_exe)
         test_expression(expr_exes)
         test_sort(sort_exes)
+        test_heap_build(heap_exes)
 
     print("fill-tool duipai tests passed")
     return 0

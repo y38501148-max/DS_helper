@@ -203,6 +203,87 @@ void selection_sort(int n) {
     }
 }
 
+void quick_sort(int left, int right, int n, int *partitionCount) {
+    if (left >= right) return;
+    int i = left, j = right + 1, pivot = a[left];
+    while (1) {
+        do {
+            ++i;
+            ++totalComparisons;
+        } while (i < right && a[i] < pivot);
+        do {
+            --j;
+            ++totalComparisons;
+        } while (j > left && a[j] > pivot);
+        if (i < j) {
+            int t = a[i]; a[i] = a[j]; a[j] = t;
+        } else {
+            break;
+        }
+    }
+    a[left] = a[j];
+    a[j] = pivot;
+    printf("第%d次划分: ", ++(*partitionCount));
+    print_array(n);
+    quick_sort(left, j - 1, n, partitionCount);
+    quick_sort(j + 1, right, n, partitionCount);
+}
+
+void shell_sort(int n) {
+    printf("希尔排序不稳定\n");
+    int step = 0;
+    for (int gap = n / 2; gap > 0; gap /= 2) {
+        int changed;
+        do {
+            changed = 0;
+            for (int i = 0; i + gap < n; ++i) {
+                ++totalComparisons;
+                if (a[i] > a[i + gap]) {
+                    int t = a[i]; a[i] = a[i + gap]; a[i + gap] = t;
+                    changed = 1;
+                }
+            }
+        } while (changed);
+        printf("第%d趟 gap=%d: ", ++step, gap);
+        print_array(n);
+    }
+}
+
+void heap_adjust(int start, int length) {
+    int tempValue = a[start];
+    int child = start * 2 + 1;
+    while (child < length) {
+        if (child + 1 < length) {
+            ++totalComparisons;
+            if (a[child] < a[child + 1]) ++child;
+        }
+        ++totalComparisons;
+        if (tempValue < a[child]) {
+            a[(child - 1) / 2] = a[child];
+            child = child * 2 + 1;
+        } else {
+            break;
+        }
+    }
+    a[(child - 1) / 2] = tempValue;
+}
+
+void heap_sort(int n) {
+    printf("堆排序不稳定\n");
+    int buildStep = 0, popStep = 0;
+    for (int i = n / 2 - 1; i >= 0; --i) {
+        heap_adjust(i, n);
+        printf("建堆第%d步: ", ++buildStep);
+        print_array(n);
+    }
+    for (int i = n - 1; i > 0; --i) {
+        int t = a[0]; a[0] = a[i]; a[i] = t;
+        printf("弹出第%d步: ", ++popStep);
+        print_array(n);
+        heap_adjust(0, i);
+    }
+}
+
 void merge_sort(int left, int right, int n, int *step) {
     if (left >= right) return;
     int mid = (left + right) / 2;
@@ -237,10 +318,87 @@ int main(void) {
     printf("归并排序稳定\n");
     int step = 0;
     merge_sort(0, n - 1, n, &step);
-#else
+#elif SORT_MODE == 5
     binary_insertion_sort(n);
+#elif SORT_MODE == 6
+    int partitionCount = 0;
+    printf("快速排序不稳定\n");
+    quick_sort(0, n - 1, n, &partitionCount);
+#elif SORT_MODE == 7
+    shell_sort(n);
+#else
+    heap_sort(n);
 #endif
     printf("总比较次数: %lld\n", totalComparisons);
+    return 0;
+}
+)DSH";
+}
+
+static std::string HeapBuildToolC(int mode) {
+    return "#define HEAP_MODE " + std::to_string(mode) + R"DSH(
+#include <stdio.h>
+
+#define MAXN 1005
+
+int heap[MAXN], heapSize;
+
+int before(int left, int right) {
+#if HEAP_MODE == 0
+    return left > right;
+#else
+    return left < right;
+#endif
+}
+
+void print_heap(void) {
+    for (int i = 1; i <= heapSize; ++i) {
+        if (i > 1) printf(" ");
+        printf("%d", heap[i]);
+    }
+    printf("\n");
+}
+
+void sift_up(int index) {
+    while (index > 1) {
+        int parent = index / 2;
+        if (!before(heap[index], heap[parent])) break;
+        int t = heap[index]; heap[index] = heap[parent]; heap[parent] = t;
+        index = parent;
+    }
+}
+
+void print_tree_table(void) {
+    printf("数组模拟堆树（空孩子为0）:\n");
+    printf("编号 值 左孩子 右孩子\n");
+    for (int i = 1; i <= heapSize; ++i) {
+        int left = i * 2 <= heapSize ? i * 2 : 0;
+        int right = i * 2 + 1 <= heapSize ? i * 2 + 1 : 0;
+        printf("%d %d %d %d\n", i, heap[i], left, right);
+    }
+}
+
+int main(void) {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    if (n < 0 || n >= MAXN) {
+        printf("输入规模不合法\n");
+        return 0;
+    }
+#if HEAP_MODE == 0
+    printf("大根堆构建过程\n");
+#else
+    printf("小根堆构建过程\n");
+#endif
+    for (int i = 1; i <= n; ++i) {
+        int value;
+        scanf("%d", &value);
+        heap[++heapSize] = value;
+        sift_up(heapSize);
+        printf("插入%d后: ", value);
+        print_heap();
+    }
+    print_tree_table();
     return 0;
 }
 )DSH";
@@ -901,13 +1059,18 @@ int leftChild[MAXNODE], rightChild[MAXNODE], isOperator[MAXNODE], nodeCount;
 int stackData[MAXNODE], stackTop, prefixPos;
 
 int is_op_token(const char *s) {
-    return strlen(s) == 1 && (s[0] == '+' || s[0] == '-' || s[0] == '*' || s[0] == '/');
+    return strlen(s) == 1 && (s[0] == '+' || s[0] == '-' || s[0] == '*' || s[0] == '/' || s[0] == '^');
 }
 
 int priority(const char *s) {
     if (s[0] == '+' || s[0] == '-') return 1;
     if (s[0] == '*' || s[0] == '/') return 2;
+    if (s[0] == '^') return 3;
     return 0;
+}
+
+int is_right_assoc(const char *s) {
+    return s[0] == '^';
 }
 
 int new_node(const char *s, int left, int right) {
@@ -949,7 +1112,9 @@ void infix_to_postfix(void) {
             while (top > 0 && strcmp(ops[top - 1], "(") != 0) strcpy(postfixTokens[postfixCount++], ops[--top]);
             if (top > 0) --top;
         } else if (is_op_token(tokens[i])) {
-            while (top > 0 && is_op_token(ops[top - 1]) && priority(ops[top - 1]) >= priority(tokens[i])) {
+            while (top > 0 && is_op_token(ops[top - 1]) &&
+                   (priority(ops[top - 1]) > priority(tokens[i]) ||
+                    (priority(ops[top - 1]) == priority(tokens[i]) && !is_right_assoc(tokens[i])))) {
                 strcpy(postfixTokens[postfixCount++], ops[--top]);
             }
             strcpy(ops[top++], tokens[i]);
@@ -1006,6 +1171,25 @@ void print_postfix(int u) {
     printf("%s ", value[u]);
 }
 
+void print_tree(int root) {
+    printf("表达式树（数组模拟，空孩子为0）:\n");
+    printf("根节点编号: %d\n", root);
+    printf("编号 值 左孩子 右孩子\n");
+    for (int i = 1; i <= nodeCount; ++i) {
+        printf("%d %s %d %d\n", i, value[i], leftChild[i], rightChild[i]);
+    }
+}
+
+int int_pow(int base, int exp) {
+    int answer = 1;
+    while (exp > 0) {
+        if (exp & 1) answer *= base;
+        base *= base;
+        exp >>= 1;
+    }
+    return answer;
+}
+
 int eval_tree(int u) {
     if (!isOperator[u]) return atoi(value[u]);
     int a = eval_tree(leftChild[u]);
@@ -1013,7 +1197,8 @@ int eval_tree(int u) {
     if (value[u][0] == '+') return a + b;
     if (value[u][0] == '-') return a - b;
     if (value[u][0] == '*') return a * b;
-    return a / b;
+    if (value[u][0] == '/') return a / b;
+    return int_pow(a, b);
 }
 
 int main(void) {
@@ -1040,8 +1225,10 @@ int main(void) {
 #elif EXPR_TARGET == 2
     print_postfix(root);
     printf("\n");
-#else
+#elif EXPR_TARGET == 3
     printf("%d\n", eval_tree(root));
+#else
+    print_tree(root);
 #endif
     return 0;
 }
@@ -1051,37 +1238,63 @@ int main(void) {
 static const std::string HUFFMAN_TOOL_C = R"DSH(#include <stdio.h>
 
 #define MAXN 1005
+#define MAXNODE 2010
 
-int weight[MAXN], used[MAXN];
+int weight[MAXNODE], used[MAXNODE], leftChild[MAXNODE], rightChild[MAXNODE], nodeCount;
 
-int pick_min(int n) {
+int pick_min(void) {
     int id = -1;
-    for (int i = 0; i < n; ++i) {
+    for (int i = 1; i <= nodeCount; ++i) {
         if (!used[i] && weight[i] >= 0 && (id == -1 || weight[i] < weight[id])) id = i;
     }
     return id;
 }
 
+long long weighted_path_length(int root, int depth) {
+    if (!root) return 0;
+    if (!leftChild[root] && !rightChild[root]) return (long long)weight[root] * depth;
+    return weighted_path_length(leftChild[root], depth + 1) + weighted_path_length(rightChild[root], depth + 1);
+}
+
+void print_tree(int root) {
+    printf("哈夫曼树（数组模拟，空孩子为0）:\n");
+    printf("根节点编号: %d\n", root);
+    printf("编号 权值 左孩子 右孩子\n");
+    for (int i = 1; i <= nodeCount; ++i) {
+        printf("%d %d %d %d\n", i, weight[i], leftChild[i], rightChild[i]);
+    }
+}
+
 int main(void) {
     int n;
     if (scanf("%d", &n) != 1) return 0;
-    for (int i = 0; i < n; ++i) scanf("%d", &weight[i]);
+    if (n <= 0 || n >= MAXN) {
+        printf("输入规模不合法\n");
+        return 0;
+    }
+    for (int i = 1; i <= n; ++i) scanf("%d", &weight[i]);
+    nodeCount = n;
     int count = n;
     long long total = 0;
     while (count > 1) {
-        int a = pick_min(n);
+        int a = pick_min();
         used[a] = 1;
-        int b = pick_min(n);
+        int b = pick_min();
         used[b] = 1;
         int cost = weight[a] + weight[b];
         total += cost;
         printf("合并 %d 和 %d，代价=%d，当前总代价=%lld\n", weight[a], weight[b], cost, total);
-        weight[n] = cost;
-        used[n] = 0;
-        ++n;
+        ++nodeCount;
+        weight[nodeCount] = cost;
+        leftChild[nodeCount] = a;
+        rightChild[nodeCount] = b;
+        used[nodeCount] = 0;
         --count;
     }
+    int root = pick_min();
+    print_tree(root);
     printf("哈夫曼总代价: %lld\n", total);
+    printf("带权路径长度: %lld\n", weighted_path_length(root, 0));
     return 0;
 }
 )DSH";
@@ -1133,6 +1346,13 @@ std::vector<FillTool> BuildTools() {
             {L"选择排序", SortToolC(3), L"输入格式：n，然后输入 n 个整数。\n输出：每次选择交换后的序列、本步比较次数、总比较次数。"},
             {L"归并排序", SortToolC(4), L"输入格式：n，然后输入 n 个整数。\n输出：每次归并后的序列、本步比较次数、总比较次数。"},
             {L"折半插入排序", SortToolC(5), L"输入格式：n，然后输入 n 个整数。\n输出：每次折半插入后的序列、本步比较次数、总比较次数。"},
+            {L"快速排序", SortToolC(6), L"输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列和总比较次数。"},
+            {L"希尔排序", SortToolC(7), L"输入格式：n，然后输入 n 个整数。\n输出：每个 gap 完成后的序列和总比较次数。"},
+            {L"堆排序", SortToolC(8), L"输入格式：n，然后输入 n 个整数。\n输出：建堆、弹出过程中的序列和总比较次数。"},
+        }},
+        {L"堆构建过程", {
+            {L"大根堆", HeapBuildToolC(0), L"输入格式：n，然后输入 n 个整数。\n输出：逐个插入后的堆序列，以及最终数组模拟堆树。"},
+            {L"小根堆", HeapBuildToolC(1), L"输入格式：n，然后输入 n 个整数。\n输出：逐个插入后的堆序列，以及最终数组模拟堆树。"},
         }},
         {L"二叉排序树逐点插入", {
             {L"插入统计", BST_INSERT_TOOL_C, L"输入格式：n，然后输入 n 个整数。\n输出：每插入一个点后的已插入数量、单次比较次数、累计比较次数。"}
@@ -1169,14 +1389,17 @@ std::vector<FillTool> BuildTools() {
             {L"前缀->中缀", ExpressionToolC(0, 1), L"输入一个前缀表达式，输出带括号中缀表达式。"},
             {L"前缀->后缀", ExpressionToolC(0, 2), L"输入一个前缀表达式，输出后缀表达式。"},
             {L"前缀->求值", ExpressionToolC(0, 3), L"输入一个前缀表达式，操作数必须为整数。"},
+            {L"前缀->建树", ExpressionToolC(0, 4), L"输入一个前缀表达式，输出数组模拟表达式树。"},
             {L"中缀->前缀", ExpressionToolC(1, 0), L"输入一个中缀表达式，可带括号，例如 (1+2)*3。"},
             {L"中缀->中缀", ExpressionToolC(1, 1), L"输入一个中缀表达式，输出标准带括号中缀形式。"},
             {L"中缀->后缀", ExpressionToolC(1, 2), L"输入一个中缀表达式，输出后缀表达式。"},
             {L"中缀->求值", ExpressionToolC(1, 3), L"输入一个中缀表达式，操作数必须为整数。"},
+            {L"中缀->建树", ExpressionToolC(1, 4), L"输入一个中缀表达式，输出数组模拟表达式树。"},
             {L"后缀->前缀", ExpressionToolC(2, 0), L"输入一个后缀表达式，建议用空格分隔 token，例如 1 2 + 3 *。"},
             {L"后缀->中缀", ExpressionToolC(2, 1), L"输入一个后缀表达式，输出带括号中缀表达式。"},
             {L"后缀->后缀", ExpressionToolC(2, 2), L"输入一个后缀表达式，原样规范化输出。"},
             {L"后缀->求值", ExpressionToolC(2, 3), L"输入一个后缀表达式，操作数必须为整数。"},
+            {L"后缀->建树", ExpressionToolC(2, 4), L"输入一个后缀表达式，输出数组模拟表达式树。"},
         }},
         {L"哈夫曼树构建过程", {
             {L"合并步骤与总代价", HUFFMAN_TOOL_C, L"输入格式：n，然后输入 n 个权值。\n输出：每一步合并的两个权值、当前代价、累计总代价。"}

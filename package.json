@@ -2,6 +2,7 @@
   "name": "ds-helper",
   "version": "1.0.0",
   "description": "DS_helper offline data-structure template and fill-tool desktop app",
+  "license": "GPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {

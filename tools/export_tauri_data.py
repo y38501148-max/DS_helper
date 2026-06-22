@@ -78,12 +78,14 @@ def export_tools():
     source = read("src/fill_tools.cpp")
     constants = const_blocks(source)
     expr_names = ["前缀", "中缀", "后缀"]
-    targets = ["前缀", "中缀", "后缀", "求值"]
+    targets = ["前缀", "中缀", "后缀", "求值", "建树"]
     expr_variants = []
     for from_mode, from_name in enumerate(expr_names):
         for target_mode, target_name in enumerate(targets):
             if target_name == "求值":
                 usage = f"输入一个{from_name}表达式，操作数必须为整数。"
+            elif target_name == "建树":
+                usage = f"输入一个{from_name}表达式，输出数组模拟表达式树。"
             else:
                 usage = f"输入一个{from_name}表达式，输出{target_name}表达式。"
             expr_variants.append(
@@ -113,6 +115,16 @@ def export_tools():
                 variant("选择排序", generated_body(source, "SortToolC", "SORT_MODE", 3), "输入格式：n，然后输入 n 个整数。\n输出：每次选择交换后的序列、本步比较次数、总比较次数。"),
                 variant("归并排序", generated_body(source, "SortToolC", "SORT_MODE", 4), "输入格式：n，然后输入 n 个整数。\n输出：每次归并后的序列、本步比较次数、总比较次数。"),
                 variant("折半插入排序", generated_body(source, "SortToolC", "SORT_MODE", 5), "输入格式：n，然后输入 n 个整数。\n输出：每次折半插入后的序列、本步比较次数、总比较次数。"),
+                variant("快速排序", generated_body(source, "SortToolC", "SORT_MODE", 6), "输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列和总比较次数。"),
+                variant("希尔排序", generated_body(source, "SortToolC", "SORT_MODE", 7), "输入格式：n，然后输入 n 个整数。\n输出：每个 gap 完成后的序列和总比较次数。"),
+                variant("堆排序", generated_body(source, "SortToolC", "SORT_MODE", 8), "输入格式：n，然后输入 n 个整数。\n输出：建堆、弹出过程中的序列和总比较次数。"),
+            ],
+        },
+        {
+            "name": "堆构建过程",
+            "variants": [
+                variant("大根堆", generated_body(source, "HeapBuildToolC", "HEAP_MODE", 0), "输入格式：n，然后输入 n 个整数。\n输出：逐个插入后的堆序列，以及最终数组模拟堆树。"),
+                variant("小根堆", generated_body(source, "HeapBuildToolC", "HEAP_MODE", 1), "输入格式：n，然后输入 n 个整数。\n输出：逐个插入后的堆序列，以及最终数组模拟堆树。"),
             ],
         },
         {"name": "二叉排序树逐点插入", "variants": [variant("插入统计", constants["BST_INSERT_TOOL_C"], "输入格式：n，然后输入 n 个整数。\n输出：每插入一个点后的已插入数量、单次比较次数、累计比较次数。")]},
@@ -158,8 +170,21 @@ def export_tools():
     ]
 
 
+def export_docs():
+    docs_dir = ROOT / "docs"
+    pages = []
+    for path in sorted(docs_dir.glob("[0-8]_*.md")):
+        pages.append(
+            {
+                "name": path.stem,
+                "content": path.read_text(encoding="utf-8"),
+            }
+        )
+    return pages
+
+
 def main():
-    data = {"templates": export_templates(), "tools": export_tools()}
+    data = {"templates": export_templates(), "tools": export_tools(), "docs": export_docs()}
     output = ROOT / "src-tauri" / "resources" / "ds_helper_data.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

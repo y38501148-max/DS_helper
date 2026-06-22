@@ -103,9 +103,16 @@ let sourceTemplates = [
   code: `/* ${name} */\n#include <stdio.h>\n\n#define N 100010\n\nint main(void) {\n    /* C 模板内容由 C++ 宿主从 src/source_templates.cpp 注入 */\n    printf("DS_helper template ${index + 1}\\n");\n    return 0;\n}\n`,
 }));
 
+let docPages = [
+  {
+    name: "文档索引",
+    content: "# 文档索引\n\n文档内容由 Tauri 数据层从项目 docs/ 目录注入。\n",
+  },
+];
+
 const expressionVariants = [];
 ["前缀", "中缀", "后缀"].forEach((from) => {
-  ["转前缀", "转中缀", "转后缀", "求值"].forEach((target) => {
+  ["转前缀", "转中缀", "转后缀", "求值", "建树"].forEach((target) => {
     expressionVariants.push({
       name: `${from}->${target.replace("转", "")}`,
       usage: `${from}表达式输入；输出目标：${target}。`,
@@ -127,9 +134,17 @@ let tools = [
   },
   {
     name: "数组多步排序",
-    variants: ["冒泡排序", "插入排序", "选择排序", "归并排序", "折半插入排序"].map((name) => ({
+    variants: ["冒泡排序", "插入排序", "选择排序", "归并排序", "折半插入排序", "快速排序", "希尔排序", "堆排序"].map((name) => ({
       name,
       usage: "输入格式：n，然后输入 n 个整数。\n输出：每一步排序序列、本步比较次数、总比较次数。",
+      code: `#include <stdio.h>\n\nint main(void) {\n    /* ${name} */\n    return 0;\n}\n`,
+    })),
+  },
+  {
+    name: "堆构建过程",
+    variants: ["大根堆", "小根堆"].map((name) => ({
+      name,
+      usage: "输入格式：n，然后输入 n 个整数。\n输出：逐个插入后的堆序列，以及最终数组模拟堆树。",
       code: `#include <stdio.h>\n\nint main(void) {\n    /* ${name} */\n    return 0;\n}\n`,
     })),
   },
@@ -198,6 +213,8 @@ const state = {
   exprTarget: 0,
   bstFrom: 0,
   bstTarget: 0,
+  docIndex: 0,
+  docQuery: "",
   stdin: "",
   stdout: "",
   templateWarningVisible: false,
@@ -237,7 +254,7 @@ function currentTool() {
 function currentVariant() {
   const tool = currentTool();
   if (tool.name === "三缀表达式转换与计算") {
-    state.variantIndex = state.exprFrom * 4 + state.exprTarget;
+    state.variantIndex = state.exprFrom * 5 + state.exprTarget;
   } else if (tool.name === "BST先后序转换与建树") {
     state.variantIndex = state.bstFrom * 2 + state.bstTarget;
   }
@@ -319,6 +336,16 @@ function filteredTemplates() {
     .filter((template) => template.name.toLowerCase().includes(query));
 }
 
+function filteredDocs() {
+  const query = state.docQuery.trim().toLowerCase();
+  return docPages
+    .map((doc, index) => ({ ...doc, index }))
+    .filter((doc) => {
+      if (!query) return true;
+      return doc.name.toLowerCase().includes(query) || doc.content.toLowerCase().includes(query);
+    });
+}
+
 function topbar(title = "完全离线的数据结构辅助工具", showBack = false) {
   return `
     <header class="topbar">
@@ -361,6 +388,11 @@ function renderHome() {
           <span class="entry-mark">▶</span>
           <div class="entry-title">选填工具</div>
           <div class="entry-meta">DFS、排序、栈队列、三缀表达式等离线工具。</div>
+        </button>
+        <button class="entry-tile" data-page="docs">
+          <span class="entry-mark">?</span>
+          <div class="entry-title">文档查询</div>
+          <div class="entry-meta">离线检索 BUAAC 数据结构文档，排除 dsx 头文件资料。</div>
         </button>
       </div>
     </main>
@@ -421,6 +453,34 @@ function renderToolList() {
   `;
 }
 
+function renderDocs() {
+  const items = filteredDocs();
+  const selected = docPages[state.docIndex] || docPages[0];
+  app.innerHTML = `
+    ${topbar("文档查询", true)}
+    <main class="workbench">
+      <aside class="sidebar">
+        <input class="search-input" value="${escapeHtml(state.docQuery)}" placeholder="搜索文档标题或正文" data-input="docQuery">
+        <div class="list">
+          ${items.map((item) => `
+            <button class="list-button ${item.index === state.docIndex ? "active" : ""}" data-doc="${item.index}">
+              <div class="list-title">${escapeHtml(item.name)}</div>
+              <div class="list-meta">Markdown document</div>
+            </button>
+          `).join("")}
+        </div>
+      </aside>
+      <section class="doc-pane">
+        <div class="pane-head">
+          <div class="pane-title">${escapeHtml(selected.name)}</div>
+          <button class="ghost-button" data-copy="doc">复制文档</button>
+        </div>
+        <pre class="doc-view">${escapeHtml(selected.content)}</pre>
+      </section>
+    </main>
+  `;
+}
+
 function renderVariantControls(tool) {
   if (tool.name === "三缀表达式转换与计算") {
     return `
@@ -429,7 +489,7 @@ function renderVariantControls(tool) {
           ${["前缀", "中缀", "后缀"].map((name, index) => `<option value="${index}" ${index === state.exprFrom ? "selected" : ""}>${name}</option>`).join("")}
         </select>
         <select class="select" data-select="exprTarget">
-          ${["转前缀", "转中缀", "转后缀", "求值"].map((name, index) => `<option value="${index}" ${index === state.exprTarget ? "selected" : ""}>${name}</option>`).join("")}
+          ${["转前缀", "转中缀", "转后缀", "求值", "建树"].map((name, index) => `<option value="${index}" ${index === state.exprTarget ? "selected" : ""}>${name}</option>`).join("")}
         </select>
       </div>
     `;
@@ -488,6 +548,7 @@ function render() {
   if (state.page === "templates") renderTemplates();
   else if (state.page === "tools") renderToolList();
   else if (state.page === "toolDetail") renderToolDetail();
+  else if (state.page === "docs") renderDocs();
   else renderHome();
   mountCodeEditor();
 }
@@ -523,6 +584,9 @@ app.addEventListener("click", (event) => {
   } else if (button.dataset.template) {
     state.templateIndex = Number(button.dataset.template);
     render();
+  } else if (button.dataset.doc) {
+    state.docIndex = Number(button.dataset.doc);
+    render();
   } else if (button.dataset.tool) {
     state.toolIndex = Number(button.dataset.tool);
     state.variantIndex = 0;
@@ -542,6 +606,8 @@ app.addEventListener("click", (event) => {
     copyText(sourceTemplates[state.templateIndex].code);
   } else if (button.dataset.copy === "tool") {
     copyText(currentToolEditorCode());
+  } else if (button.dataset.copy === "doc") {
+    copyText((docPages[state.docIndex] || docPages[0]).content);
   } else if (button.dataset.action === "run") {
     const variant = currentVariant();
     const code = currentToolEditorCode();
@@ -589,6 +655,11 @@ app.addEventListener("input", (event) => {
     render();
   } else if (event.target.dataset.input === "stdin") {
     state.stdin = event.target.value;
+  } else if (event.target.dataset.input === "docQuery") {
+    state.docQuery = event.target.value;
+    const first = filteredDocs()[0];
+    if (first) state.docIndex = first.index;
+    render();
   }
 });
 
@@ -622,8 +693,10 @@ if (hasNativeBridge()) {
     if (message.type === "initData") {
       sourceTemplates = message.templates || sourceTemplates;
       tools = message.tools || tools;
+      docPages = message.docs || docPages;
       state.templateIndex = Math.min(state.templateIndex, Math.max(0, sourceTemplates.length - 1));
       state.toolIndex = Math.min(state.toolIndex, Math.max(0, tools.length - 1));
+      state.docIndex = Math.min(state.docIndex, Math.max(0, docPages.length - 1));
       state.variantIndex = 0;
       render();
     } else if (message.type === "runResult") {
@@ -640,8 +713,10 @@ if (hasTauriBridge()) {
     .then((message) => {
       sourceTemplates = message.templates || sourceTemplates;
       tools = message.tools || tools;
+      docPages = message.docs || docPages;
       state.templateIndex = Math.min(state.templateIndex, Math.max(0, sourceTemplates.length - 1));
       state.toolIndex = Math.min(state.toolIndex, Math.max(0, tools.length - 1));
+      state.docIndex = Math.min(state.docIndex, Math.max(0, docPages.length - 1));
       state.variantIndex = 0;
       render();
     })
