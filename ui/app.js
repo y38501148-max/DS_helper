@@ -1,6 +1,9 @@
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import "monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution";
+import MarkdownIt from "markdown-it";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 self.MonacoEnvironment = {
   getWorker() {
@@ -78,6 +81,93 @@ function registerCppCompletions() {
 
 registerCppCompletions();
 
+function renderKatex(content, displayMode) {
+  return katex.renderToString(content, {
+    displayMode,
+    throwOnError: false,
+    strict: false,
+    trust: false,
+  });
+}
+
+function mathInlineRule(state, silent) {
+  const start = state.pos;
+  if (state.src[start] !== "$" || state.src[start + 1] === "$") return false;
+  if (start > 0 && state.src[start - 1] === "\\") return false;
+
+  let end = start + 1;
+  while ((end = state.src.indexOf("$", end)) !== -1) {
+    if (state.src[end - 1] !== "\\") break;
+    ++end;
+  }
+  if (end === -1) return false;
+
+  const content = state.src.slice(start + 1, end);
+  if (!content.trim()) return false;
+  if (!silent) {
+    const token = state.push("math_inline", "math", 0);
+    token.content = content;
+  }
+  state.pos = end + 1;
+  return true;
+}
+
+function mathBlockRule(state, startLine, endLine, silent) {
+  const start = state.bMarks[startLine] + state.tShift[startLine];
+  const max = state.eMarks[startLine];
+  const marker = state.src.slice(start, start + 2);
+  if (marker !== "$$") return false;
+
+  let firstLine = state.src.slice(start + 2, max);
+  let content = "";
+  let nextLine = startLine;
+  const sameLineEnd = firstLine.indexOf("$$");
+  if (sameLineEnd >= 0) {
+    content = firstLine.slice(0, sameLineEnd);
+  } else {
+    content = firstLine;
+    for (nextLine = startLine + 1; nextLine < endLine; ++nextLine) {
+      const lineStart = state.bMarks[nextLine] + state.tShift[nextLine];
+      const lineEnd = state.eMarks[nextLine];
+      const line = state.src.slice(lineStart, lineEnd);
+      const close = line.indexOf("$$");
+      if (close >= 0) {
+        content += `\n${line.slice(0, close)}`;
+        break;
+      }
+      content += `\n${line}`;
+    }
+  }
+
+  if (nextLine >= endLine) return false;
+  if (!silent) {
+    const token = state.push("math_block", "math", 0);
+    token.block = true;
+    token.content = content.trim();
+    token.map = [startLine, nextLine + 1];
+  }
+  state.line = nextLine + 1;
+  return true;
+}
+
+const markdown = new MarkdownIt({
+  html: false,
+  linkify: false,
+  typographer: true,
+  breaks: false,
+});
+
+markdown.inline.ruler.before("escape", "math_inline", mathInlineRule);
+markdown.block.ruler.before("fence", "math_block", mathBlockRule, {
+  alt: ["paragraph", "reference", "blockquote", "list"],
+});
+markdown.renderer.rules.math_inline = (tokens, idx) => renderKatex(tokens[idx].content, false);
+markdown.renderer.rules.math_block = (tokens, idx) => `${renderKatex(tokens[idx].content, true)}\n`;
+
+function renderDocMarkdown(content) {
+  return markdown.render(content);
+}
+
 let sourceTemplates = [
   "[02] 字符串基础 reverse/atoi/itoa",
   "[03] 朴素字符串查找 index",
@@ -106,7 +196,7 @@ let sourceTemplates = [
 let docPages = [
   {
     name: "文档索引",
-    content: "# 文档索引\n\n文档内容由 Tauri 数据层从项目 docs/ 目录注入。\n",
+    content: "# 文档索引\n\n文档内容由 Tauri 数据层从项目 docs/ 目录注入。\n\n渲染检查：$n_0=n_2+1$\n",
   },
 ];
 
@@ -475,7 +565,7 @@ function renderDocs() {
           <div class="pane-title">${escapeHtml(selected.name)}</div>
           <button class="ghost-button" data-copy="doc">复制文档</button>
         </div>
-        <pre class="doc-view">${escapeHtml(selected.content)}</pre>
+        <div class="doc-view markdown-body">${renderDocMarkdown(selected.content)}</div>
       </section>
     </main>
   `;
