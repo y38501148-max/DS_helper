@@ -1155,13 +1155,39 @@ void print_prefix(int u) {
     print_prefix(rightChild[u]);
 }
 
+void print_infix(int u);
+
+int child_needs_parentheses(int parent, int child, int isRightChild) {
+    if (!child || !isOperator[child]) return 0;
+    int parentPriority = priority(value[parent]);
+    int childPriority = priority(value[child]);
+    char parentOp = value[parent][0];
+    char childOp = value[child][0];
+    if (childPriority < parentPriority) return 1;
+    if (childPriority > parentPriority) return 0;
+    if (parentOp == '^') return !isRightChild;
+    if (!isRightChild) return 0;
+    if (parentOp == '-' || parentOp == '/') return 1;
+    if (parentOp == '*' && childOp == '/') return 1;
+    return 0;
+}
+
+void print_infix_child(int parent, int child, int isRightChild) {
+    int needParentheses = child_needs_parentheses(parent, child, isRightChild);
+    if (needParentheses) printf("(");
+    print_infix(child);
+    if (needParentheses) printf(")");
+}
+
 void print_infix(int u) {
     if (!u) return;
-    if (isOperator[u]) printf("(");
-    print_infix(leftChild[u]);
+    if (!isOperator[u]) {
+        printf("%s", value[u]);
+        return;
+    }
+    print_infix_child(u, leftChild[u], 0);
     printf("%s", value[u]);
-    print_infix(rightChild[u]);
-    if (isOperator[u]) printf(")");
+    print_infix_child(u, rightChild[u], 1);
 }
 
 void print_postfix(int u) {
@@ -1386,17 +1412,17 @@ std::vector<FillTool> BuildTools() {
         }},
         {L"三缀表达式转换与计算", {
             {L"前缀->前缀", ExpressionToolC(0, 0), L"输入一个前缀表达式，操作数/运算符可用空格分隔；求值时操作数需为整数。"},
-            {L"前缀->中缀", ExpressionToolC(0, 1), L"输入一个前缀表达式，输出带括号中缀表达式。"},
+            {L"前缀->中缀", ExpressionToolC(0, 1), L"输入一个前缀表达式，输出必要括号中缀表达式。"},
             {L"前缀->后缀", ExpressionToolC(0, 2), L"输入一个前缀表达式，输出后缀表达式。"},
             {L"前缀->求值", ExpressionToolC(0, 3), L"输入一个前缀表达式，操作数必须为整数。"},
             {L"前缀->建树", ExpressionToolC(0, 4), L"输入一个前缀表达式，输出数组模拟表达式树。"},
             {L"中缀->前缀", ExpressionToolC(1, 0), L"输入一个中缀表达式，可带括号，例如 (1+2)*3。"},
-            {L"中缀->中缀", ExpressionToolC(1, 1), L"输入一个中缀表达式，输出标准带括号中缀形式。"},
+            {L"中缀->中缀", ExpressionToolC(1, 1), L"输入一个中缀表达式，输出必要括号中缀形式。"},
             {L"中缀->后缀", ExpressionToolC(1, 2), L"输入一个中缀表达式，输出后缀表达式。"},
             {L"中缀->求值", ExpressionToolC(1, 3), L"输入一个中缀表达式，操作数必须为整数。"},
             {L"中缀->建树", ExpressionToolC(1, 4), L"输入一个中缀表达式，输出数组模拟表达式树。"},
             {L"后缀->前缀", ExpressionToolC(2, 0), L"输入一个后缀表达式，建议用空格分隔 token，例如 1 2 + 3 *。"},
-            {L"后缀->中缀", ExpressionToolC(2, 1), L"输入一个后缀表达式，输出带括号中缀表达式。"},
+            {L"后缀->中缀", ExpressionToolC(2, 1), L"输入一个后缀表达式，输出必要括号中缀表达式。"},
             {L"后缀->后缀", ExpressionToolC(2, 2), L"输入一个后缀表达式，原样规范化输出。"},
             {L"后缀->求值", ExpressionToolC(2, 3), L"输入一个后缀表达式，操作数必须为整数。"},
             {L"后缀->建树", ExpressionToolC(2, 4), L"输入一个后缀表达式，输出数组模拟表达式树。"},
