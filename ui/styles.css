@@ -364,6 +364,10 @@ button {
   gap: 10px;
 }
 
+.control-grid.single {
+  grid-template-columns: 1fr;
+}
+
 .usage {
   margin: 0;
   min-height: 86px;
@@ -467,6 +471,46 @@ button {
   border-radius: 6px;
   background: var(--code);
   color: var(--code-text);
+}
+
+.markdown-body .doc-code-block {
+  margin: 0.8em 0;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--code-line);
+  background: var(--code);
+}
+
+.markdown-body .doc-code-head {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px 0 12px;
+  background: var(--code-panel);
+  color: var(--code-muted);
+  font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
+}
+
+.markdown-body .doc-copy-button {
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid #4a4a4a;
+  background: #333333;
+  color: var(--code-text);
+  font-size: 12px;
+}
+
+.markdown-body .doc-copy-button:hover {
+  background: #3f3f3f;
+}
+
+.markdown-body .doc-code-block pre {
+  margin: 0;
+  border-radius: 0;
+  border: 0;
 }
 
 .markdown-body pre code {

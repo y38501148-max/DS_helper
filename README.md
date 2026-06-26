@@ -1,6 +1,6 @@
 # DS_helper
 
-版本：v1.2.0
+版本：v1.3.0
 
 DS_helper 是一个完全离线的 Windows 桌面工具，用于查看数据结构源码模板，以及运行选填工具生成结果。
 
@@ -57,11 +57,11 @@ bash scripts/build-windows-nsis.sh
 
 ```text
 src-tauri/target/x86_64-pc-windows-gnu/release/DS_helper.exe
-src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/DS_helper_1.2.0_x64-setup.exe
-src-tauri/target/release/bundle/dmg/DS_helper_1.2.0_aarch64.dmg
+src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/DS_helper_1.3.0_x64-setup.exe
+src-tauri/target/release/bundle/dmg/DS_helper_1.3.0_aarch64.dmg
 release/DS_helper.exe
-release/DS_helper_1.2.0_x64-setup.exe
-release/DS_helper_1.2.0_aarch64.dmg
+release/DS_helper_1.3.0_x64-setup.exe
+release/DS_helper_1.3.0_aarch64.dmg
 ```
 
 ### 旧 C++ 版本

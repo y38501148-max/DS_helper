@@ -164,7 +164,28 @@ markdown.block.ruler.before("fence", "math_block", mathBlockRule, {
 markdown.renderer.rules.math_inline = (tokens, idx) => renderKatex(tokens[idx].content, false);
 markdown.renderer.rules.math_block = (tokens, idx) => `${renderKatex(tokens[idx].content, true)}\n`;
 
+let renderedDocCodeBlocks = [];
+
+markdown.renderer.rules.fence = (tokens, idx) => {
+  const token = tokens[idx];
+  const info = token.info ? token.info.trim().split(/\s+/)[0] : "";
+  const language = info || "text";
+  const monacoLanguage = /^(c|h|cpp|c\+\+)$/i.test(language) ? "cpp" : language;
+  const codeIndex = renderedDocCodeBlocks.length;
+  renderedDocCodeBlocks.push(token.content);
+  return `
+    <div class="doc-code-block">
+      <div class="doc-code-head">
+        <span>${escapeHtml(language)}</span>
+        <button class="doc-copy-button" data-copy-doc-code="${codeIndex}">复制</button>
+      </div>
+      <pre><code class="language-${escapeHtml(monacoLanguage)}" data-doc-code-block="${codeIndex}" data-doc-code-language="${escapeHtml(monacoLanguage)}">${escapeHtml(token.content)}</code></pre>
+    </div>
+  `;
+};
+
 function renderDocMarkdown(content) {
+  renderedDocCodeBlocks = [];
   return markdown.render(content);
 }
 
@@ -224,7 +245,7 @@ let tools = [
   },
   {
     name: "数组多步排序",
-    variants: ["冒泡排序", "插入排序", "选择排序", "归并排序", "折半插入排序", "快速排序", "希尔排序", "堆排序"].map((name) => ({
+    variants: ["冒泡排序", "插入排序", "选择排序", "归并排序", "折半插入排序", "快速排序-l基准", "快速排序-r基准", "快速排序-mid基准", "希尔排序", "堆排序"].map((name) => ({
       name,
       usage: "输入格式：n，然后输入 n 个整数。\n输出：每一步排序序列、本步比较次数、总比较次数。",
       code: `#include <stdio.h>\n\nint main(void) {\n    /* ${name} */\n    return 0;\n}\n`,
@@ -250,6 +271,21 @@ let tools = [
       { name: "后序->先序", usage: "输入格式：n，然后输入二叉排序树后序序列。\n输出：对应先序遍历。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" },
       { name: "后序->建树", usage: "输入格式：n，然后输入二叉排序树后序序列。\n输出：数组模拟建树表。", code: "#include <stdio.h>\n\nint main(void) { return 0; }\n" },
     ],
+  },
+  {
+    name: "B树系列",
+    variants: [
+      "B-树-序列建树",
+      "B-树-已有树插入",
+      "B-树-根与三序遍历",
+      "B+树-序列建树",
+      "B+树-已有树插入",
+      "B+树-根与三序遍历",
+    ].map((name) => ({
+      name,
+      usage: "建树输入：m n 后接 n 个关键字。\n已有树输入：m nodeCount root 后接数组模拟节点表。",
+      code: `#include <stdio.h>\n\nint main(void) {\n    /* ${name} */\n    return 0;\n}\n`,
+    })),
   },
   {
     name: "二叉树三种遍历",
@@ -303,6 +339,8 @@ const state = {
   exprTarget: 0,
   bstFrom: 0,
   bstTarget: 0,
+  sortMode: 0,
+  quickPivot: 0,
   docIndex: 0,
   docQuery: "",
   stdin: "",
@@ -347,6 +385,11 @@ function currentVariant() {
     state.variantIndex = state.exprFrom * 5 + state.exprTarget;
   } else if (tool.name === "BST先后序转换与建树") {
     state.variantIndex = state.bstFrom * 2 + state.bstTarget;
+  } else if (tool.name === "数组多步排序") {
+    if (state.sortMode <= 4) state.variantIndex = state.sortMode;
+    else if (state.sortMode === 5) state.variantIndex = 5 + state.quickPivot;
+    else if (state.sortMode === 6) state.variantIndex = 8;
+    else state.variantIndex = 9;
   }
   return tool.variants[state.variantIndex] || tool.variants[0];
 }
@@ -417,6 +460,13 @@ function mountCodeEditor() {
   });
   activeCodeEditorKind = kind;
   activeCodeEditorKey = editorKey;
+}
+
+function mountDocCodeBlocks() {
+  document.querySelectorAll("[data-doc-code-block]").forEach((node) => {
+    const language = node.dataset.docCodeLanguage || "cpp";
+    monaco.editor.colorizeElement(node, { theme: "vs-dark", mimeType: language }).catch(() => {});
+  });
 }
 
 function filteredTemplates() {
@@ -572,6 +622,21 @@ function renderDocs() {
 }
 
 function renderVariantControls(tool) {
+  if (tool.name === "数组多步排序") {
+    const sortNames = ["冒泡排序", "插入排序", "选择排序", "归并排序", "折半插入排序", "快速排序", "希尔排序", "堆排序"];
+    return `
+      <div class="control-grid ${state.sortMode === 5 ? "" : "single"}">
+        <select class="select" data-select="sortMode">
+          ${sortNames.map((name, index) => `<option value="${index}" ${index === state.sortMode ? "selected" : ""}>${name}</option>`).join("")}
+        </select>
+        ${state.sortMode === 5 ? `
+          <select class="select" data-select="quickPivot">
+            ${["l", "r", "mid"].map((name, index) => `<option value="${index}" ${index === state.quickPivot ? "selected" : ""}>基准 ${name}</option>`).join("")}
+          </select>
+        ` : ""}
+      </div>
+    `;
+  }
   if (tool.name === "三缀表达式转换与计算") {
     return `
       <div class="control-grid">
@@ -641,6 +706,7 @@ function render() {
   else if (state.page === "docs") renderDocs();
   else renderHome();
   mountCodeEditor();
+  if (state.page === "docs") mountDocCodeBlocks();
 }
 
 async function copyText(text) {
@@ -688,6 +754,9 @@ app.addEventListener("click", (event) => {
     if (currentTool().name === "BST先后序转换与建树") {
       state.bstFrom = 0;
       state.bstTarget = 0;
+    } else if (currentTool().name === "数组多步排序") {
+      state.sortMode = 0;
+      state.quickPivot = 0;
     }
     clearCurrentToolDrafts();
     state.stdout = "";
@@ -698,6 +767,8 @@ app.addEventListener("click", (event) => {
     copyText(currentToolEditorCode());
   } else if (button.dataset.copy === "doc") {
     copyText((docPages[state.docIndex] || docPages[0]).content);
+  } else if (button.dataset.copyDocCode !== undefined) {
+    copyText(renderedDocCodeBlocks[Number(button.dataset.copyDocCode)] || "");
   } else if (button.dataset.action === "run") {
     const variant = currentVariant();
     const code = currentToolEditorCode();
@@ -772,6 +843,14 @@ app.addEventListener("change", (event) => {
     render();
   } else if (event.target.dataset.select === "bstTarget") {
     state.bstTarget = Number(event.target.value);
+    state.stdout = "";
+    render();
+  } else if (event.target.dataset.select === "sortMode") {
+    state.sortMode = Number(event.target.value);
+    state.stdout = "";
+    render();
+  } else if (event.target.dataset.select === "quickPivot") {
+    state.quickPivot = Number(event.target.value);
     state.stdout = "";
     render();
   }

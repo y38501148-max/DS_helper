@@ -36,6 +36,18 @@ def generated_body(source, function_name, macro_name, mode):
     return f"#define {macro_name} {mode}" + match.group(1)
 
 
+def generated_sort_body(source, mode, pivot_mode=0):
+    match = re.search(
+        r"static std::string SortToolC\(int mode, int pivotMode\) \{\n\s*return \"#define SORT_MODE \" "
+        r'\+ std::to_string\(mode\) \+ "\\n#define QUICK_PIVOT_MODE " \+ std::to_string\(pivotMode\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise ValueError("missing generated tool body: SortToolC")
+    return f"#define SORT_MODE {mode}\n#define QUICK_PIVOT_MODE {pivot_mode}" + match.group(1)
+
+
 def generated_expression_body(source, from_mode, target_mode):
     match = re.search(
         r'static std::string ExpressionToolC\(int from, int target\) \{\n\s*return "#define EXPR_FROM " '
@@ -58,6 +70,18 @@ def generated_bst_traversal_body(source, from_mode, target_mode):
     if not match:
         raise ValueError("missing generated tool body: BstTraversalToolC")
     return f"#define BST_FROM {from_mode}\n#define BST_TARGET {target_mode}" + match.group(1)
+
+
+def generated_btree_series_body(source, kind, operation):
+    match = re.search(
+        r'static std::string BTreeSeriesToolC\(int kind, int operation\) \{\n\s*return "#define BTREE_KIND " '
+        r'\+ std::to_string\(kind\) \+ "\\n#define BTREE_OPERATION " \+ std::to_string\(operation\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise ValueError("missing generated tool body: BTreeSeriesToolC")
+    return f"#define BTREE_KIND {kind}\n#define BTREE_OPERATION {operation}" + match.group(1)
 
 
 def export_templates():
@@ -110,14 +134,16 @@ def export_tools():
         {
             "name": "数组多步排序",
             "variants": [
-                variant("冒泡排序", generated_body(source, "SortToolC", "SORT_MODE", 1), "输入格式：n，然后输入 n 个整数。\n输出：每一趟排序后的序列、本步比较次数、总比较次数。"),
-                variant("插入排序", generated_body(source, "SortToolC", "SORT_MODE", 2), "输入格式：n，然后输入 n 个整数。\n输出：每次插入后的序列、本步比较次数、总比较次数。"),
-                variant("选择排序", generated_body(source, "SortToolC", "SORT_MODE", 3), "输入格式：n，然后输入 n 个整数。\n输出：每次选择交换后的序列、本步比较次数、总比较次数。"),
-                variant("归并排序", generated_body(source, "SortToolC", "SORT_MODE", 4), "输入格式：n，然后输入 n 个整数。\n输出：每次归并后的序列、本步比较次数、总比较次数。"),
-                variant("折半插入排序", generated_body(source, "SortToolC", "SORT_MODE", 5), "输入格式：n，然后输入 n 个整数。\n输出：每次折半插入后的序列、本步比较次数、总比较次数。"),
-                variant("快速排序", generated_body(source, "SortToolC", "SORT_MODE", 6), "输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列和总比较次数。"),
-                variant("希尔排序", generated_body(source, "SortToolC", "SORT_MODE", 7), "输入格式：n，然后输入 n 个整数。\n输出：每个 gap 完成后的序列和总比较次数。"),
-                variant("堆排序", generated_body(source, "SortToolC", "SORT_MODE", 8), "输入格式：n，然后输入 n 个整数。\n输出：建堆、弹出过程中的序列和总比较次数。"),
+                variant("冒泡排序", generated_sort_body(source, 1), "输入格式：n，然后输入 n 个整数。\n输出：每一趟排序后的序列、本步比较次数、总比较次数。"),
+                variant("插入排序", generated_sort_body(source, 2), "输入格式：n，然后输入 n 个整数。\n输出：每次插入后的序列、本步比较次数、总比较次数。"),
+                variant("选择排序", generated_sort_body(source, 3), "输入格式：n，然后输入 n 个整数。\n输出：每次选择交换后的序列、本步比较次数、总比较次数。"),
+                variant("归并排序", generated_sort_body(source, 4), "输入格式：n，然后输入 n 个整数。\n输出：每次归并后的序列、本步比较次数、总比较次数。"),
+                variant("折半插入排序", generated_sort_body(source, 5), "输入格式：n，然后输入 n 个整数。\n输出：每次折半插入后的序列、本步比较次数、总比较次数。"),
+                variant("快速排序-l基准", generated_sort_body(source, 6, 0), "输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列、基准值和总比较次数。"),
+                variant("快速排序-r基准", generated_sort_body(source, 6, 1), "输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列、基准值和总比较次数。"),
+                variant("快速排序-mid基准", generated_sort_body(source, 6, 2), "输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列、基准值和总比较次数。"),
+                variant("希尔排序", generated_sort_body(source, 7), "输入格式：n，然后输入 n 个整数。\n输出：每个 gap 完成后的序列和总比较次数。"),
+                variant("堆排序", generated_sort_body(source, 8), "输入格式：n，然后输入 n 个整数。\n输出：建堆、弹出过程中的序列和总比较次数。"),
             ],
         },
         {
@@ -135,6 +161,17 @@ def export_tools():
                 variant("先序->建树", generated_bst_traversal_body(source, 0, 1), "输入格式：n，然后输入二叉排序树先序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"),
                 variant("后序->先序", generated_bst_traversal_body(source, 1, 0), "输入格式：n，然后输入二叉排序树后序序列。\n输出：对应先序遍历。重复值按放入右子树处理。"),
                 variant("后序->建树", generated_bst_traversal_body(source, 1, 1), "输入格式：n，然后输入二叉排序树后序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"),
+            ],
+        },
+        {
+            "name": "B树系列",
+            "variants": [
+                variant("B-树-序列建树", generated_btree_series_body(source, 0, 0), "输入格式：m n，然后输入 n 个关键字。\nm 为阶数，需满足 3 <= m <= 16。\n输出：数组模拟 B-树、根节点关键字和三序遍历。"),
+                variant("B-树-已有树插入", generated_btree_series_body(source, 0, 1), "输入格式：m nodeCount root insertValue，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n叶子结点不输入 children；非叶子输入 keyCount+1 个孩子编号。\n输出：插入后的数组模拟 B-树和三序遍历。"),
+                variant("B-树-根与三序遍历", generated_btree_series_body(source, 0, 2), "输入格式：m nodeCount root，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n输出：根节点关键字、先序/中序/后序遍历。"),
+                variant("B+树-序列建树", generated_btree_series_body(source, 1, 0), "输入格式：m n，然后输入 n 个关键字。\nm 为阶数，需满足 3 <= m <= 16。\n输出：数组模拟 B+树、根节点关键字、三序遍历和叶链。"),
+                variant("B+树-已有树插入", generated_btree_series_body(source, 1, 1), "输入格式：m nodeCount root insertValue，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n叶子结点不输入 children；非叶子输入 keyCount+1 个孩子编号；叶链会自动重建。\n输出：插入后的数组模拟 B+树、三序遍历和叶链。"),
+                variant("B+树-根与三序遍历", generated_btree_series_body(source, 1, 2), "输入格式：m nodeCount root，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n输出：根节点关键字、先序/中序/后序遍历和叶链。"),
             ],
         },
         {

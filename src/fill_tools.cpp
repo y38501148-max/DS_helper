@@ -118,8 +118,8 @@ int main(void) {
 }
 )DSH";
 
-static std::string SortToolC(int mode) {
-    return "#define SORT_MODE " + std::to_string(mode) + R"DSH(
+static std::string SortToolC(int mode, int pivotMode) {
+    return "#define SORT_MODE " + std::to_string(mode) + "\n#define QUICK_PIVOT_MODE " + std::to_string(pivotMode) + R"DSH(
 #include <stdio.h>
 
 #define MAXN 1005
@@ -205,7 +205,16 @@ void selection_sort(int n) {
 
 void quick_sort(int left, int right, int n, int *partitionCount) {
     if (left >= right) return;
-    int i = left, j = right + 1, pivot = a[left];
+    int pivotIndex = left;
+#if QUICK_PIVOT_MODE == 1
+    pivotIndex = right;
+#elif QUICK_PIVOT_MODE == 2
+    pivotIndex = (left + right) >> 1;
+#endif
+    int pivot = a[pivotIndex];
+    a[pivotIndex] = a[left];
+    a[left] = pivot;
+    int i = left, j = right + 1;
     while (1) {
         do {
             ++i;
@@ -223,7 +232,7 @@ void quick_sort(int left, int right, int n, int *partitionCount) {
     }
     a[left] = a[j];
     a[j] = pivot;
-    printf("第%d次划分: ", ++(*partitionCount));
+    printf("第%d次划分 pivot=%d: ", ++(*partitionCount), pivot);
     print_array(n);
     quick_sort(left, j - 1, n, partitionCount);
     quick_sort(j + 1, right, n, partitionCount);
@@ -322,7 +331,14 @@ int main(void) {
     binary_insertion_sort(n);
 #elif SORT_MODE == 6
     int partitionCount = 0;
-    printf("快速排序不稳定\n");
+    printf("快速排序不稳定，基准选择=");
+#if QUICK_PIVOT_MODE == 1
+    printf("r\n");
+#elif QUICK_PIVOT_MODE == 2
+    printf("mid\n");
+#else
+    printf("l\n");
+#endif
     quick_sort(0, n - 1, n, &partitionCount);
 #elif SORT_MODE == 7
     shell_sort(n);
@@ -573,6 +589,352 @@ int main(void) {
 #else
     print_tree(root);
 #endif
+    return 0;
+}
+)DSH";
+}
+
+static std::string BTreeSeriesToolC(int kind, int operation) {
+    return "#define BTREE_KIND " + std::to_string(kind) + "\n#define BTREE_OPERATION " + std::to_string(operation) + R"DSH(
+#include <stdio.h>
+#include <string.h>
+
+#define MAX_ORDER 16
+#define MAX_NODE 512
+#define MAX_SLOT 20
+
+int orderValue, maxKeys, nodeCount, rootId;
+int isLeaf[MAX_NODE], keyCount[MAX_NODE], keys[MAX_NODE][MAX_SLOT], child[MAX_NODE][MAX_SLOT], nextLeaf[MAX_NODE];
+
+void clear_tree(void) {
+    memset(isLeaf, 0, sizeof(isLeaf));
+    memset(keyCount, 0, sizeof(keyCount));
+    memset(keys, 0, sizeof(keys));
+    memset(child, 0, sizeof(child));
+    memset(nextLeaf, 0, sizeof(nextLeaf));
+    nodeCount = 0;
+    rootId = 0;
+}
+
+int valid_order(void) {
+    if (orderValue < 3 || orderValue > MAX_ORDER) {
+        printf("阶数m需要满足 3 <= m <= %d\n", MAX_ORDER);
+        return 0;
+    }
+    maxKeys = orderValue - 1;
+    return 1;
+}
+
+int new_node(int leaf) {
+    if (nodeCount + 1 >= MAX_NODE) {
+        printf("节点数量超过限制\n");
+        return 0;
+    }
+    ++nodeCount;
+    isLeaf[nodeCount] = leaf;
+    keyCount[nodeCount] = 0;
+    nextLeaf[nodeCount] = 0;
+    for (int i = 0; i < MAX_SLOT; ++i) {
+        keys[nodeCount][i] = 0;
+        child[nodeCount][i] = 0;
+    }
+    return nodeCount;
+}
+
+void insert_key_in_leaf(int u, int value) {
+    int pos = keyCount[u];
+    while (pos > 0 && keys[u][pos - 1] > value) {
+        keys[u][pos] = keys[u][pos - 1];
+        --pos;
+    }
+    keys[u][pos] = value;
+    ++keyCount[u];
+}
+
+void insert_internal_entry(int u, int pos, int separator, int rightChild) {
+    for (int i = keyCount[u]; i > pos; --i) keys[u][i] = keys[u][i - 1];
+    for (int i = keyCount[u] + 1; i > pos + 1; --i) child[u][i] = child[u][i - 1];
+    keys[u][pos] = separator;
+    child[u][pos + 1] = rightChild;
+    ++keyCount[u];
+}
+
+int split_btree_node(int u, int *promotedKey) {
+    int oldCount = keyCount[u];
+    int mid = oldCount / 2;
+    int right = new_node(isLeaf[u]);
+    *promotedKey = keys[u][mid];
+    keyCount[right] = oldCount - mid - 1;
+    for (int i = 0; i < keyCount[right]; ++i) keys[right][i] = keys[u][mid + 1 + i];
+    if (!isLeaf[u]) {
+        for (int i = 0; i <= keyCount[right]; ++i) child[right][i] = child[u][mid + 1 + i];
+    }
+    keyCount[u] = mid;
+    return right;
+}
+
+int insert_btree_recursive(int u, int value, int *promotedKey, int *promotedRight) {
+    if (isLeaf[u]) {
+        insert_key_in_leaf(u, value);
+        if (keyCount[u] <= maxKeys) return 0;
+        *promotedRight = split_btree_node(u, promotedKey);
+        return 1;
+    }
+    int pos = 0;
+    while (pos < keyCount[u] && value >= keys[u][pos]) ++pos;
+    int childPromotedKey = 0, childPromotedRight = 0;
+    if (insert_btree_recursive(child[u][pos], value, &childPromotedKey, &childPromotedRight)) {
+        insert_internal_entry(u, pos, childPromotedKey, childPromotedRight);
+        if (keyCount[u] <= maxKeys) return 0;
+        *promotedRight = split_btree_node(u, promotedKey);
+        return 1;
+    }
+    return 0;
+}
+
+int split_bplus_leaf(int u, int *promotedKey) {
+    int oldCount = keyCount[u];
+    int leftCount = (oldCount + 1) / 2;
+    int right = new_node(1);
+    keyCount[right] = oldCount - leftCount;
+    for (int i = 0; i < keyCount[right]; ++i) keys[right][i] = keys[u][leftCount + i];
+    keyCount[u] = leftCount;
+    nextLeaf[right] = nextLeaf[u];
+    nextLeaf[u] = right;
+    *promotedKey = keys[right][0];
+    return right;
+}
+
+int split_bplus_internal(int u, int *promotedKey) {
+    int oldCount = keyCount[u];
+    int mid = oldCount / 2;
+    int right = new_node(0);
+    *promotedKey = keys[u][mid];
+    keyCount[right] = oldCount - mid - 1;
+    for (int i = 0; i < keyCount[right]; ++i) keys[right][i] = keys[u][mid + 1 + i];
+    for (int i = 0; i <= keyCount[right]; ++i) child[right][i] = child[u][mid + 1 + i];
+    keyCount[u] = mid;
+    return right;
+}
+
+int insert_bplus_recursive(int u, int value, int *promotedKey, int *promotedRight) {
+    if (isLeaf[u]) {
+        insert_key_in_leaf(u, value);
+        if (keyCount[u] <= maxKeys) return 0;
+        *promotedRight = split_bplus_leaf(u, promotedKey);
+        return 1;
+    }
+    int pos = 0;
+    while (pos < keyCount[u] && value >= keys[u][pos]) ++pos;
+    int childPromotedKey = 0, childPromotedRight = 0;
+    if (insert_bplus_recursive(child[u][pos], value, &childPromotedKey, &childPromotedRight)) {
+        insert_internal_entry(u, pos, childPromotedKey, childPromotedRight);
+        if (keyCount[u] <= maxKeys) return 0;
+        *promotedRight = split_bplus_internal(u, promotedKey);
+        return 1;
+    }
+    return 0;
+}
+
+void insert_value(int value) {
+    if (!rootId) rootId = new_node(1);
+    int promotedKey = 0, promotedRight = 0, split = 0;
+#if BTREE_KIND == 0
+    split = insert_btree_recursive(rootId, value, &promotedKey, &promotedRight);
+#else
+    split = insert_bplus_recursive(rootId, value, &promotedKey, &promotedRight);
+#endif
+    if (split) {
+        int oldRoot = rootId;
+        rootId = new_node(0);
+        keyCount[rootId] = 1;
+        keys[rootId][0] = promotedKey;
+        child[rootId][0] = oldRoot;
+        child[rootId][1] = promotedRight;
+    }
+}
+
+void print_value(int value, int *first) {
+    if (!*first) printf(" ");
+    printf("%d", value);
+    *first = 0;
+}
+
+void preorder(int u, int *first) {
+    if (!u) return;
+    for (int i = 0; i < keyCount[u]; ++i) print_value(keys[u][i], first);
+    if (!isLeaf[u]) {
+        for (int i = 0; i <= keyCount[u]; ++i) preorder(child[u][i], first);
+    }
+}
+
+void inorder(int u, int *first) {
+    if (!u) return;
+    if (isLeaf[u]) {
+        for (int i = 0; i < keyCount[u]; ++i) print_value(keys[u][i], first);
+        return;
+    }
+    for (int i = 0; i < keyCount[u]; ++i) {
+        inorder(child[u][i], first);
+        print_value(keys[u][i], first);
+    }
+    inorder(child[u][keyCount[u]], first);
+}
+
+void postorder(int u, int *first) {
+    if (!u) return;
+    if (!isLeaf[u]) {
+        for (int i = 0; i <= keyCount[u]; ++i) postorder(child[u][i], first);
+    }
+    for (int i = 0; i < keyCount[u]; ++i) print_value(keys[u][i], first);
+}
+
+void collect_leaves(int u, int leaves[], int *count) {
+    if (!u) return;
+    if (isLeaf[u]) {
+        leaves[(*count)++] = u;
+        return;
+    }
+    for (int i = 0; i <= keyCount[u]; ++i) collect_leaves(child[u][i], leaves, count);
+}
+
+void rebuild_leaf_links(void) {
+    int leaves[MAX_NODE], count = 0;
+    for (int i = 1; i <= nodeCount; ++i) nextLeaf[i] = 0;
+    collect_leaves(rootId, leaves, &count);
+    for (int i = 0; i + 1 < count; ++i) nextLeaf[leaves[i]] = leaves[i + 1];
+}
+
+void print_bracket_keys(int u) {
+    printf("[");
+    for (int i = 0; i < keyCount[u]; ++i) {
+        if (i) printf(",");
+        printf("%d", keys[u][i]);
+    }
+    printf("]");
+}
+
+void print_bracket_children(int u) {
+    printf("[");
+    if (!isLeaf[u]) {
+        for (int i = 0; i <= keyCount[u]; ++i) {
+            if (i) printf(",");
+            printf("%d", child[u][i]);
+        }
+    }
+    printf("]");
+}
+
+void print_tree_table(void) {
+#if BTREE_KIND == 0
+    printf("B-树结果\n");
+#else
+    printf("B+树结果\n");
+#endif
+    printf("根节点编号: %d\n", rootId);
+    printf("编号 叶子 键数 键 子结点\n");
+    for (int i = 1; i <= nodeCount; ++i) {
+        printf("%d %d %d ", i, isLeaf[i], keyCount[i]);
+        print_bracket_keys(i);
+        printf(" ");
+        print_bracket_children(i);
+        printf("\n");
+    }
+}
+
+void print_leaf_chain(void) {
+    int leaves[MAX_NODE], count = 0, first = 1;
+    collect_leaves(rootId, leaves, &count);
+    printf("叶链: ");
+    for (int i = 0; i < count; ++i) {
+        int u = leaves[i];
+        for (int j = 0; j < keyCount[u]; ++j) print_value(keys[u][j], &first);
+    }
+    printf("\n");
+}
+
+void print_summary(void) {
+    int first = 1;
+    printf("根节点关键字: ");
+    if (rootId) {
+        for (int i = 0; i < keyCount[rootId]; ++i) print_value(keys[rootId][i], &first);
+    }
+    printf("\n");
+    first = 1;
+    printf("先序遍历: ");
+    preorder(rootId, &first);
+    printf("\n");
+    first = 1;
+    printf("中序遍历: ");
+    inorder(rootId, &first);
+    printf("\n");
+    first = 1;
+    printf("后序遍历: ");
+    postorder(rootId, &first);
+    printf("\n");
+#if BTREE_KIND == 1
+    print_leaf_chain();
+#endif
+}
+
+int read_existing_tree(int withInsert, int *insertValue) {
+    int loadedCount = 0;
+    int loadedRoot = 0;
+    if (withInsert) {
+        if (scanf("%d%d%d%d", &orderValue, &loadedCount, &loadedRoot, insertValue) != 4) return 0;
+    } else {
+        if (scanf("%d%d%d", &orderValue, &loadedCount, &loadedRoot) != 3) return 0;
+    }
+    if (!valid_order()) return 0;
+    if (loadedCount < 0 || loadedCount >= MAX_NODE || loadedRoot < 0 || loadedRoot > loadedCount) {
+        printf("树规模或根编号不合法\n");
+        return 0;
+    }
+    clear_tree();
+    nodeCount = loadedCount;
+    rootId = loadedRoot;
+    for (int i = 1; i <= nodeCount; ++i) {
+        if (scanf("%d%d", &isLeaf[i], &keyCount[i]) != 2) return 0;
+        if (keyCount[i] < 0 || keyCount[i] > maxKeys) {
+            printf("节点%d关键字数量不合法\n", i);
+            return 0;
+        }
+        for (int j = 0; j < keyCount[i]; ++j) scanf("%d", &keys[i][j]);
+        if (!isLeaf[i]) {
+            for (int j = 0; j <= keyCount[i]; ++j) scanf("%d", &child[i][j]);
+        }
+    }
+#if BTREE_KIND == 1
+    rebuild_leaf_links();
+#endif
+    return 1;
+}
+
+int main(void) {
+#if BTREE_OPERATION == 0
+    int n;
+    if (scanf("%d%d", &orderValue, &n) != 2) return 0;
+    if (!valid_order()) return 0;
+    clear_tree();
+    rootId = new_node(1);
+    for (int i = 0; i < n; ++i) {
+        int value;
+        scanf("%d", &value);
+        insert_value(value);
+    }
+#elif BTREE_OPERATION == 1
+    int value;
+    if (!read_existing_tree(1, &value)) return 0;
+    insert_value(value);
+#else
+    int ignored = 0;
+    if (!read_existing_tree(0, &ignored)) return 0;
+#endif
+#if BTREE_KIND == 1
+    rebuild_leaf_links();
+#endif
+    print_tree_table();
+    print_summary();
     return 0;
 }
 )DSH";
@@ -1367,14 +1729,16 @@ std::vector<FillTool> BuildTools() {
             {L"所有可能DFS顺序", GRAPH_DFS_TOOL_C, L"输入格式：n m start，然后输入 m 行无向边 u v。\n输出：从 start 出发所有可能 DFS 先序序列，按字典序排序去重。\n注意：为避免组合爆炸，n <= 8。"}
         }},
         {L"数组多步排序", {
-            {L"冒泡排序", SortToolC(1), L"输入格式：n，然后输入 n 个整数。\n输出：每一趟排序后的序列、本步比较次数、总比较次数。"},
-            {L"插入排序", SortToolC(2), L"输入格式：n，然后输入 n 个整数。\n输出：每次插入后的序列、本步比较次数、总比较次数。"},
-            {L"选择排序", SortToolC(3), L"输入格式：n，然后输入 n 个整数。\n输出：每次选择交换后的序列、本步比较次数、总比较次数。"},
-            {L"归并排序", SortToolC(4), L"输入格式：n，然后输入 n 个整数。\n输出：每次归并后的序列、本步比较次数、总比较次数。"},
-            {L"折半插入排序", SortToolC(5), L"输入格式：n，然后输入 n 个整数。\n输出：每次折半插入后的序列、本步比较次数、总比较次数。"},
-            {L"快速排序", SortToolC(6), L"输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列和总比较次数。"},
-            {L"希尔排序", SortToolC(7), L"输入格式：n，然后输入 n 个整数。\n输出：每个 gap 完成后的序列和总比较次数。"},
-            {L"堆排序", SortToolC(8), L"输入格式：n，然后输入 n 个整数。\n输出：建堆、弹出过程中的序列和总比较次数。"},
+            {L"冒泡排序", SortToolC(1, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每一趟排序后的序列、本步比较次数、总比较次数。"},
+            {L"插入排序", SortToolC(2, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每次插入后的序列、本步比较次数、总比较次数。"},
+            {L"选择排序", SortToolC(3, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每次选择交换后的序列、本步比较次数、总比较次数。"},
+            {L"归并排序", SortToolC(4, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每次归并后的序列、本步比较次数、总比较次数。"},
+            {L"折半插入排序", SortToolC(5, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每次折半插入后的序列、本步比较次数、总比较次数。"},
+            {L"快速排序-l基准", SortToolC(6, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列、基准值和总比较次数。"},
+            {L"快速排序-r基准", SortToolC(6, 1), L"输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列、基准值和总比较次数。"},
+            {L"快速排序-mid基准", SortToolC(6, 2), L"输入格式：n，然后输入 n 个整数。\n输出：每次划分后的序列、基准值和总比较次数。"},
+            {L"希尔排序", SortToolC(7, 0), L"输入格式：n，然后输入 n 个整数。\n输出：每个 gap 完成后的序列和总比较次数。"},
+            {L"堆排序", SortToolC(8, 0), L"输入格式：n，然后输入 n 个整数。\n输出：建堆、弹出过程中的序列和总比较次数。"},
         }},
         {L"堆构建过程", {
             {L"大根堆", HeapBuildToolC(0), L"输入格式：n，然后输入 n 个整数。\n输出：逐个插入后的堆序列，以及最终数组模拟堆树。"},
@@ -1388,6 +1752,14 @@ std::vector<FillTool> BuildTools() {
             {L"先序->建树", BstTraversalToolC(0, 1), L"输入格式：n，然后输入二叉排序树先序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"},
             {L"后序->先序", BstTraversalToolC(1, 0), L"输入格式：n，然后输入二叉排序树后序序列。\n输出：对应先序遍历。重复值按放入右子树处理。"},
             {L"后序->建树", BstTraversalToolC(1, 1), L"输入格式：n，然后输入二叉排序树后序序列。\n输出：数组模拟建树表，空孩子为 0。重复值按放入右子树处理。"},
+        }},
+        {L"B树系列", {
+            {L"B-树-序列建树", BTreeSeriesToolC(0, 0), L"输入格式：m n，然后输入 n 个关键字。\nm 为阶数，需满足 3 <= m <= 16。\n输出：数组模拟 B-树、根节点关键字和三序遍历。"},
+            {L"B-树-已有树插入", BTreeSeriesToolC(0, 1), L"输入格式：m nodeCount root insertValue，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n叶子结点不输入 children；非叶子输入 keyCount+1 个孩子编号。\n输出：插入后的数组模拟 B-树和三序遍历。"},
+            {L"B-树-根与三序遍历", BTreeSeriesToolC(0, 2), L"输入格式：m nodeCount root，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n输出：根节点关键字、先序/中序/后序遍历。"},
+            {L"B+树-序列建树", BTreeSeriesToolC(1, 0), L"输入格式：m n，然后输入 n 个关键字。\nm 为阶数，需满足 3 <= m <= 16。\n输出：数组模拟 B+树、根节点关键字、三序遍历和叶链。"},
+            {L"B+树-已有树插入", BTreeSeriesToolC(1, 1), L"输入格式：m nodeCount root insertValue，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n叶子结点不输入 children；非叶子输入 keyCount+1 个孩子编号；叶链会自动重建。\n输出：插入后的数组模拟 B+树、三序遍历和叶链。"},
+            {L"B+树-根与三序遍历", BTreeSeriesToolC(1, 2), L"输入格式：m nodeCount root，然后按编号输入 nodeCount 行：isLeaf keyCount keys... children...。\n输出：根节点关键字、先序/中序/后序遍历和叶链。"},
         }},
         {L"二叉树三种遍历", {
             {L"先序遍历", TraversalToolC(1), L"输入格式：n root，然后对 1..n 输入 left right；空孩子用 -1。\n输出：所选遍历序列。"},

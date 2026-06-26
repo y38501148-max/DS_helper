@@ -10,14 +10,16 @@ import tempfile
 TOOL_VARIANTS = [
     ("binary_insertion", "BINARY_INSERTION_SORT_TOOL_C"),
     ("graph_dfs", "GRAPH_DFS_TOOL_C"),
-    ("sort_bubble", ("SortToolC", "SORT_MODE", 1)),
-    ("sort_insert", ("SortToolC", "SORT_MODE", 2)),
-    ("sort_select", ("SortToolC", "SORT_MODE", 3)),
-    ("sort_merge", ("SortToolC", "SORT_MODE", 4)),
-    ("sort_binary_insert", ("SortToolC", "SORT_MODE", 5)),
-    ("sort_quick", ("SortToolC", "SORT_MODE", 6)),
-    ("sort_shell", ("SortToolC", "SORT_MODE", 7)),
-    ("sort_heap", ("SortToolC", "SORT_MODE", 8)),
+    ("sort_bubble", ("SortToolC", 1, 0)),
+    ("sort_insert", ("SortToolC", 2, 0)),
+    ("sort_select", ("SortToolC", 3, 0)),
+    ("sort_merge", ("SortToolC", 4, 0)),
+    ("sort_binary_insert", ("SortToolC", 5, 0)),
+    ("sort_quick_l", ("SortToolC", 6, 0)),
+    ("sort_quick_r", ("SortToolC", 6, 1)),
+    ("sort_quick_mid", ("SortToolC", 6, 2)),
+    ("sort_shell", ("SortToolC", 7, 0)),
+    ("sort_heap", ("SortToolC", 8, 0)),
     ("heap_build_max", ("HeapBuildToolC", "HEAP_MODE", 0)),
     ("heap_build_min", ("HeapBuildToolC", "HEAP_MODE", 1)),
     ("bst_insert", "BST_INSERT_TOOL_C"),
@@ -25,6 +27,12 @@ TOOL_VARIANTS = [
     ("bst_pre_build", ("BstTraversalToolC", 0, 1)),
     ("bst_post_to_pre", ("BstTraversalToolC", 1, 0)),
     ("bst_post_build", ("BstTraversalToolC", 1, 1)),
+    ("btree_build", ("BTreeSeriesToolC", 0, 0)),
+    ("btree_insert", ("BTreeSeriesToolC", 0, 1)),
+    ("btree_traverse", ("BTreeSeriesToolC", 0, 2)),
+    ("bplus_build", ("BTreeSeriesToolC", 1, 0)),
+    ("bplus_insert", ("BTreeSeriesToolC", 1, 1)),
+    ("bplus_traverse", ("BTreeSeriesToolC", 1, 2)),
     ("traversal_pre", ("TraversalToolC", "TRAVERSAL_MODE", 1)),
     ("traversal_in", ("TraversalToolC", "TRAVERSAL_MODE", 2)),
     ("traversal_post", ("TraversalToolC", "TRAVERSAL_MODE", 3)),
@@ -82,6 +90,18 @@ def generated_body(source, function_name, macro_name, mode):
     return f"#define {macro_name} {mode}" + match.group(1)
 
 
+def generated_sort_body(source, mode, pivot_mode):
+    match = re.search(
+        r"static std::string SortToolC\(int mode, int pivotMode\) \{\n\s*return \"#define SORT_MODE \" "
+        r'\+ std::to_string\(mode\) \+ "\\n#define QUICK_PIVOT_MODE " \+ std::to_string\(pivotMode\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise ValueError("missing generated tool body: SortToolC")
+    return f"#define SORT_MODE {mode}\n#define QUICK_PIVOT_MODE {pivot_mode}" + match.group(1)
+
+
 def generated_expression_body(source, from_mode, target_mode):
     match = re.search(
         r'static std::string ExpressionToolC\(int from, int target\) \{\n\s*return "#define EXPR_FROM " '
@@ -106,6 +126,18 @@ def generated_bst_traversal_body(source, from_mode, target_mode):
     return f"#define BST_FROM {from_mode}\n#define BST_TARGET {target_mode}" + match.group(1)
 
 
+def generated_btree_series_body(source, kind, operation):
+    match = re.search(
+        r'static std::string BTreeSeriesToolC\(int kind, int operation\) \{\n\s*return "#define BTREE_KIND " '
+        r'\+ std::to_string\(kind\) \+ "\\n#define BTREE_OPERATION " \+ std::to_string\(operation\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise ValueError("missing generated tool body: BTreeSeriesToolC")
+    return f"#define BTREE_KIND {kind}\n#define BTREE_OPERATION {operation}" + match.group(1)
+
+
 def collect_variants(source):
     constants = const_blocks(source)
     variants = []
@@ -117,6 +149,12 @@ def collect_variants(source):
             elif spec[0] == "BstTraversalToolC":
                 _, from_mode, target_mode = spec
                 variants.append((name, generated_bst_traversal_body(source, from_mode, target_mode)))
+            elif spec[0] == "BTreeSeriesToolC":
+                _, kind, operation = spec
+                variants.append((name, generated_btree_series_body(source, kind, operation)))
+            elif spec[0] == "SortToolC" and len(spec) == 3:
+                _, mode, pivot_mode = spec
+                variants.append((name, generated_sort_body(source, mode, pivot_mode)))
             else:
                 function_name, macro_name, mode = spec
                 variants.append((name, generated_body(source, function_name, macro_name, mode)))

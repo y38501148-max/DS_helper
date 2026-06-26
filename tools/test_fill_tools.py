@@ -26,16 +26,16 @@ def const_blocks(source):
     )
 
 
-def generated_sort(source, mode):
+def generated_sort(source, mode, pivot_mode=0):
     match = re.search(
-        r'static std::string SortToolC\(int mode\) \{\n\s*return "#define SORT_MODE " '
-        r'\+ std::to_string\(mode\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        r"static std::string SortToolC\(int mode, int pivotMode\) \{\n\s*return \"#define SORT_MODE \" "
+        r'\+ std::to_string\(mode\) \+ "\\n#define QUICK_PIVOT_MODE " \+ std::to_string\(pivotMode\) \+ R"DSH\((.*?)\)DSH";\n\}',
         source,
         re.S,
     )
     if not match:
         raise RuntimeError("missing SortToolC body")
-    return f"#define SORT_MODE {mode}" + match.group(1)
+    return f"#define SORT_MODE {mode}\n#define QUICK_PIVOT_MODE {pivot_mode}" + match.group(1)
 
 
 def generated_heap(source, mode):
@@ -84,6 +84,18 @@ def generated_bst_traversal(source, from_mode, target_mode):
     if not match:
         raise RuntimeError("missing BstTraversalToolC body")
     return f"#define BST_FROM {from_mode}\n#define BST_TARGET {target_mode}" + match.group(1)
+
+
+def generated_btree_series(source, kind, operation):
+    match = re.search(
+        r'static std::string BTreeSeriesToolC\(int kind, int operation\) \{\n\s*return "#define BTREE_KIND " '
+        r'\+ std::to_string\(kind\) \+ "\\n#define BTREE_OPERATION " \+ std::to_string\(operation\) \+ R"DSH\((.*?)\)DSH";\n\}',
+        source,
+        re.S,
+    )
+    if not match:
+        raise RuntimeError("missing BTreeSeriesToolC body")
+    return f"#define BTREE_KIND {kind}\n#define BTREE_OPERATION {operation}" + match.group(1)
 
 
 def compile_tool(compiler, workdir, name, code):
@@ -306,6 +318,46 @@ def test_bst_traversal(exes):
 
     assert "不是合法" in run_tool(exes[(0, 0)], "3\n5 7 4\n")
     assert "不是合法" in run_tool(exes[(1, 0)], "3\n7 4 5\n")
+
+
+def ints_after_label(output, label):
+    for line in output.splitlines():
+        if line.startswith(label):
+            payload = line.split(":", 1)[1].strip()
+            return [] if not payload else list(map(int, payload.split()))
+    raise AssertionError((label, output))
+
+
+def test_btree_series(exes):
+    values = [10, 20, 5, 6, 12, 30, 7, 17]
+    stdin_text = f"4 {len(values)}\n{' '.join(map(str, values))}\n"
+
+    btree = run_tool(exes[(0, 0)], stdin_text)
+    assert "B-树结果" in btree and "根节点编号:" in btree, btree
+    assert ints_after_label(btree, "中序遍历") == sorted(values), btree
+    assert ints_after_label(btree, "根节点关键字"), btree
+
+    bplus = run_tool(exes[(1, 0)], stdin_text)
+    assert "B+树结果" in bplus and "叶链:" in bplus, bplus
+    assert ints_after_label(bplus, "叶链") == sorted(values), bplus
+    assert ints_after_label(bplus, "根节点关键字"), bplus
+
+    one_leaf_insert = "4 1 1 20\n1 2 10 30\n"
+    got = run_tool(exes[(0, 1)], one_leaf_insert)
+    assert ints_after_label(got, "根节点关键字") == [10, 20, 30], got
+    assert ints_after_label(got, "中序遍历") == [10, 20, 30], got
+
+    got = run_tool(exes[(1, 1)], one_leaf_insert)
+    assert ints_after_label(got, "叶链") == [10, 20, 30], got
+
+    existing_tree = "4 3 3\n1 2 5 6\n1 2 12 20\n0 1 10 1 2\n"
+    got = run_tool(exes[(0, 2)], existing_tree)
+    assert ints_after_label(got, "根节点关键字") == [10], got
+    assert ints_after_label(got, "中序遍历") == [5, 6, 10, 12, 20], got
+
+    got = run_tool(exes[(1, 2)], existing_tree)
+    assert ints_after_label(got, "根节点关键字") == [10], got
+    assert ints_after_label(got, "叶链") == [5, 6, 12, 20], got
 
 
 def lds_length(seq):
@@ -569,7 +621,11 @@ def main():
         queue_exe = compile_tool(args.compiler, root, "queue_tool", constants["QUEUE_COUNT_TOOL_C"])
         dijkstra_exe = compile_tool(args.compiler, root, "dijkstra_tool", constants["DIJKSTRA_TOOL_C"])
         kruskal_exe = compile_tool(args.compiler, root, "kruskal_tool", constants["KRUSKAL_TOOL_C"])
-        sort_exes = {mode: compile_tool(args.compiler, root, f"sort_{mode}", generated_sort(source, mode)) for mode in range(1, 9)}
+        sort_specs = [(mode, 0) for mode in range(1, 6)] + [(6, pivot) for pivot in range(3)] + [(7, 0), (8, 0)]
+        sort_exes = {
+            (mode, pivot): compile_tool(args.compiler, root, f"sort_{mode}_{pivot}", generated_sort(source, mode, pivot))
+            for mode, pivot in sort_specs
+        }
         heap_exes = {mode: compile_tool(args.compiler, root, f"heap_{mode}", generated_heap(source, mode)) for mode in range(2)}
         bst_exes = {
             (from_mode, target_mode): compile_tool(
@@ -580,6 +636,16 @@ def main():
             )
             for from_mode in range(2)
             for target_mode in range(2)
+        }
+        btree_exes = {
+            (kind, operation): compile_tool(
+                args.compiler,
+                root,
+                f"btree_{kind}_{operation}",
+                generated_btree_series(source, kind, operation),
+            )
+            for kind in range(2)
+            for operation in range(3)
         }
         expr_exes = {
             (from_mode, target_mode): compile_tool(
@@ -595,6 +661,7 @@ def main():
         test_dfs(dfs_exe)
         test_stack(stack_input_to_output_exe, stack_output_to_input_exe)
         test_bst_traversal(bst_exes)
+        test_btree_series(btree_exes)
         test_queue(queue_exe)
         test_dijkstra(dijkstra_exe)
         test_kruskal(kruskal_exe)
